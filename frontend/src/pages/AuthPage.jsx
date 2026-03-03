@@ -57,6 +57,7 @@ export default function AuthPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
           <input
             type="password"
@@ -64,7 +65,8 @@ export default function AuthPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={4}
+            minLength={8}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           />
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={loading} style={{ width: '100%' }}>
