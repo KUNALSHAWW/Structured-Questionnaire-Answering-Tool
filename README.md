@@ -2,7 +2,23 @@
 
 > **Almabase GTM Engineering Internship — Home Assignment**
 
-A full-stack prototype that lets users upload questionnaires and reference documents, then generates **grounded, citation-backed answers** using Retrieval-Augmented Generation (RAG). Every answer includes explicit citations and evidence snippets; questions without supporting evidence return exactly `Not found in references.`
+A full-stack RAG (Retrieval-Augmented Generation) application that automatically answers questionnaires using uploaded reference documents. Every answer is grounded in source material with explicit citations and evidence snippets — questions without supporting evidence return `Not found in references.`
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)
+![React](https://img.shields.io/badge/React-19-61DAFB)
+![FAISS](https://img.shields.io/badge/FAISS-Vector_Search-orange)
+
+---
+
+## Demo Flow
+
+1. **Register/Login** → JWT-authenticated session
+2. **Upload** questionnaire (PDF/XLSX/TXT) + reference documents (PDF/TXT/CSV/DOCX)
+3. **Build Index** → passages are split, embedded, and indexed in FAISS
+4. **Generate Answers** → each question is matched to relevant passages and answered with citations
+5. **Review** → confidence scores, evidence snippets, edit or regenerate individual answers
+6. **Export** → download as XLSX or PDF
 
 ---
 
@@ -10,30 +26,31 @@ A full-stack prototype that lets users upload questionnaires and reference docum
 
 | Feature | Description |
 |---|---|
-| **Auth** | JWT-based register/login with bcrypt password hashing |
-| **Upload** | Upload questionnaire (PDF/XLSX/TXT) and reference docs (PDF/TXT/CSV/DOCX) |
-| **Parsing** | Automatic question extraction from uploaded questionnaires |
-| **Indexing** | Passage splitting (250 tokens, 50 overlap) → embeddings → FAISS vector index |
-| **Generation** | Grounded answer generation with strict anti-hallucination prompt |
-| **Citations** | Every answer includes `[filename \| page/para]` citations |
-| **Evidence Snippets** | Show the exact passages used to support each answer |
-| **Confidence Score** | 0–100 score derived from retrieval similarity |
-| **Edit** | Manually edit any generated answer |
-| **Regenerate** | Re-generate a single question's answer without re-running the full set |
-| **Export** | Download answers as XLSX or PDF preserving question order |
-| **Optional Sanity/GROQ** | Sync reference metadata to Sanity CMS if env vars are set |
+| **JWT Auth** | Secure register/login with bcrypt password hashing |
+| **File Upload & Parsing** | Automatically extract questions from PDF/XLSX/TXT questionnaires |
+| **RAG Pipeline** | Passage splitting → embedding → FAISS retrieval → grounded generation |
+| **Anti-Hallucination** | Strict prompt enforcement + similarity threshold gating |
+| **Citations** | Every answer includes `[filename \| page/para]` source references |
+| **Evidence Snippets** | Verbatim quotes from source passages shown alongside answers |
+| **Confidence Scores** | 0–100% score derived from retrieval similarity with calibrated mapping |
+| **Edit & Regenerate** | Manually edit any answer or regenerate from the same passages |
+| **XLSX/PDF Export** | Download all answers preserving question order and formatting |
+| **Smart Extractive Fallback** | Keyword-scored sentence extraction when no LLM API key is set |
+| **Loading States** | Animated spinners during index building, generation, and regeneration |
 
 ---
 
 ## Tech Stack
 
-- **Backend**: Python 3.10+ / FastAPI / SQLAlchemy / SQLite
-- **Frontend**: React (Vite) with vanilla CSS
-- **Vector Search**: FAISS (faiss-cpu)
-- **Embeddings**: sentence-transformers (`all-MiniLM-L6-v2`) by default; OpenAI `text-embedding-3-small` if `OPENAI_API_KEY` is set
-- **Generation**: OpenAI `gpt-4o-mini` if API key available; extractive fallback otherwise
-- **Auth**: JWT + bcrypt (python-jose, passlib)
-- **Export**: openpyxl (XLSX), reportlab (PDF)
+| Layer | Technology |
+|---|---|
+| **Backend** | Python 3.10+ · FastAPI · SQLAlchemy · SQLite |
+| **Frontend** | React 19 · Vite 6 · Vanilla CSS (custom design system) |
+| **Vector Search** | FAISS (faiss-cpu) · cosine similarity via normalized L2 |
+| **Embeddings** | sentence-transformers `all-MiniLM-L6-v2` (default, local) or OpenAI `text-embedding-3-small` |
+| **Generation** | OpenAI `gpt-4o-mini` (if API key set) or smart extractive fallback |
+| **Auth** | JWT (python-jose) + bcrypt |
+| **Export** | openpyxl (XLSX) · reportlab (PDF) |
 
 ---
 
@@ -43,65 +60,59 @@ A full-stack prototype that lets users upload questionnaires and reference docum
 
 - Python 3.10+
 - Node.js 18+
-- pip
 
-### 1. Clone & Setup Backend
+### 1. Clone & Install
 
 ```bash
-cd Almabase
+git clone https://github.com/KUNALSHAWW/Structured-Questionnaire-Answering-Tool.git
+cd Structured-Questionnaire-Answering-Tool
 
-# Create virtual environment (recommended)
+# Backend
+cd backend
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # Linux/Mac: source .venv/bin/activate
-
-# Install dependencies
-cd backend
 pip install -r requirements.txt
 
-# Configure environment
-cp .env.example .env
-# Edit .env and set JWT_SECRET (required), optionally OPENAI_API_KEY
+# Frontend
+cd ../frontend
+npm install
 ```
 
-### 2. Start Backend
+### 2. Configure Environment
 
+```bash
+cd backend
+cp .env.example .env
+# Edit .env — set JWT_SECRET (required)
+# Optionally set OPENAI_API_KEY for LLM-powered answers
+```
+
+### 3. Run
+
+**Terminal 1 — Backend:**
 ```bash
 cd backend
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 3. Start Frontend
-
+**Terminal 2 — Frontend:**
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
 
-Open **http://localhost:3000** in your browser.
+Open **http://localhost:3000**
 
-### 4. Demo Flow
+### 4. Try It Out
 
-1. **Register** a new account on the login page
-2. **Upload** the sample questionnaire (`sample_data/questionnaire.txt`)
-3. **Upload** reference documents from `sample_data/` (all 5 `.txt` files)
-4. Click **Build Index** to process references into embeddings
-5. Click **Generate Answers** on the questionnaire
-6. **Review** answers with citations, evidence snippets, and confidence scores
-7. **Edit** or **Regenerate** individual answers as needed
-8. **Export** as XLSX or PDF
-
-### 5. Scripted Demo
-
-```bash
-# Start the backend first, then in another terminal:
-# Linux/Mac:
-bash docs/demo.sh
-
-# Windows (PowerShell):
-.\docs\demo.ps1
-```
+1. Register a new account
+2. Upload `sample_data/questionnaire.txt`
+3. Upload all 5 reference documents from `sample_data/`
+4. Click **Build Index**
+5. Click **Generate Answers**
+6. Review answers with citations, confidence scores, and evidence
+7. Export as XLSX or PDF
 
 ---
 
@@ -109,14 +120,12 @@ bash docs/demo.sh
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `JWT_SECRET` | Yes | `dev-secret-change-me` | Secret for JWT token signing |
-| `OPENAI_API_KEY` | No | — | Enables OpenAI embeddings + generation |
-| `RETRIEVAL_THRESHOLD` | No | `0.35` | Min similarity score to consider a passage relevant |
+| `JWT_SECRET` | Yes | `dev-secret-change-me` | Secret key for JWT token signing |
+| `OPENAI_API_KEY` | No | — | Enables OpenAI embeddings + LLM generation |
+| `RETRIEVAL_THRESHOLD` | No | `0.20` | Minimum similarity score to consider a passage relevant |
 | `RETRIEVAL_TOP_K` | No | `5` | Number of passages to retrieve per question |
-| `SANITY_ENABLED` | No | `false` | Enable Sanity/GROQ metadata integration |
-| `SANITY_PROJECT_ID` | No | — | Sanity project ID |
-| `SANITY_TOKEN` | No | — | Sanity API token |
-| `SANITY_DATASET` | No | `production` | Sanity dataset name |
+| `PASSAGE_TOKEN_SIZE` | No | `200` | Token count per passage chunk |
+| `PASSAGE_OVERLAP` | No | `40` | Overlapping tokens between adjacent passages |
 
 ---
 
@@ -124,21 +133,33 @@ bash docs/demo.sh
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/api/auth/register` | Register new user |
-| POST | `/api/auth/login` | Login, returns JWT |
-| POST | `/api/uploads/questionnaire` | Upload questionnaire file |
-| POST | `/api/uploads/reference` | Upload reference document |
-| GET | `/api/uploads/questionnaires` | List user's questionnaires |
-| GET | `/api/uploads/references` | List user's references |
-| GET | `/api/uploads/questionnaire/:id/questions` | Get parsed questions |
-| POST | `/api/index/build` | Build FAISS index from references |
-| POST | `/api/generate` | Generate answers for a questionnaire |
-| POST | `/api/regenerate/:question_id` | Regenerate one answer |
-| PUT | `/api/answers/:answer_id` | Edit an answer |
-| GET | `/api/runs` | List generation runs |
-| GET | `/api/runs/:run_id` | Get run with all answers |
-| GET | `/api/export/:run_id?format=xlsx\|pdf` | Export answers |
-| GET | `/api/references/:id/snippet` | Get passage snippet |
+| `POST` | `/api/auth/register` | Register new user |
+| `POST` | `/api/auth/login` | Login → JWT token |
+| `POST` | `/api/uploads/questionnaire` | Upload questionnaire file |
+| `POST` | `/api/uploads/reference` | Upload reference document |
+| `GET` | `/api/uploads/questionnaires` | List questionnaires |
+| `GET` | `/api/uploads/references` | List references |
+| `GET` | `/api/uploads/questionnaire/:id/questions` | Get parsed questions |
+| `POST` | `/api/index/build` | Build FAISS index from references |
+| `POST` | `/api/generate` | Generate answers for a questionnaire |
+| `POST` | `/api/regenerate/:question_id` | Regenerate one answer |
+| `PUT` | `/api/answers/:answer_id` | Edit an answer |
+| `GET` | `/api/runs` | List generation runs |
+| `GET` | `/api/runs/:run_id` | Get run with all answers |
+| `GET` | `/api/export/:run_id?format=xlsx\|pdf` | Export answers |
+| `GET` | `/api/references/:id/snippet` | Get passage snippet |
+
+---
+
+## Testing
+
+```bash
+# Unit tests (15 tests — parsing, splitting, embeddings, retrieval)
+python -m pytest tests/ -v
+
+# End-to-end test (register → upload → index → generate → export)
+python e2e_test.py
+```
 
 ---
 
@@ -146,138 +167,122 @@ bash docs/demo.sh
 
 The `sample_data/` directory contains a fictional company **"NovaTech Solutions"** with:
 
-- **questionnaire.txt** — 10 questions covering company overview, policies, HR, DR, and ESG
-- **company_overview.txt** — Company description, revenue, products, clients
-- **security_policy.txt** — Data privacy, retention, ISO 27001 cert details
-- **hr_report.txt** — Headcount, turnover, remote work policy, benefits
-- **disaster_recovery.txt** — DR/BCP plan with RTO/RPO, infrastructure, testing
-- **esg_report.txt** — Environmental commitments, social responsibility, governance
+| File | Content |
+|---|---|
+| `questionnaire.txt` | 10 questions covering company overview, policies, HR, DR, ESG |
+| `company_overview.txt` | Company description, revenue ($78.4M), products, clients |
+| `security_policy.txt` | Data privacy, retention policy, ISO 27001 certification |
+| `hr_report.txt` | Headcount (342 FTE), turnover rate, remote work policy |
+| `disaster_recovery.txt` | DR/BCP plan with RTO/RPO targets, testing schedule |
+| `esg_report.txt` | Environmental commitments, carbon goals, governance |
 
 ---
 
-## Testing
+## Architecture
 
-```bash
-cd Almabase
-python -m pytest tests/ -v
+```
+┌──────────────┐     ┌──────────────────────────────────────────┐
+│   React UI   │────▷│  FastAPI Backend                         │
+│  (Vite, :3000)│     │                                          │
+└──────────────┘     │  ┌─────────┐  ┌──────────┐  ┌─────────┐ │
+                     │  │ Upload  │→ │ Splitter │→ │ Embed + │ │
+                     │  │ & Parse │  │ (200 tok)│  │  FAISS  │ │
+                     │  └─────────┘  └──────────┘  └────┬────┘ │
+                     │                                   │      │
+                     │  ┌─────────┐  ┌──────────────┐    │      │
+                     │  │Question │→ │ Retrieve Top-K│◁───┘      │
+                     │  └─────────┘  └──────┬───────┘           │
+                     │                      │                   │
+                     │              ┌───────▽────────┐          │
+                     │              │ LLM Generate   │          │
+                     │              │ or Extractive   │          │
+                     │              │ Fallback        │          │
+                     │              └───────┬────────┘          │
+                     │                      │                   │
+                     │              ┌───────▽────────┐          │
+                     │              │ Answer + Cite  │          │
+                     │              │ + Evidence     │          │
+                     │              └────────────────┘          │
+                     └──────────────────────────────────────────┘
 ```
 
-15 tests covering:
-- Question detection heuristics
-- Question text cleaning
-- Questionnaire parsing (TXT)
-- Reference text extraction
-- Passage splitting
-- Embeddings + FAISS build/search
-
----
-
-## Architecture & Design Decisions
-
-### Anti-Hallucination Strategy
-- **Strict system prompt**: The LLM is instructed to use ONLY the provided passages
-- **Confidence threshold**: If the best passage similarity is below `RETRIEVAL_THRESHOLD`, the system returns `Not found in references.` instead of generating
-- **Explicit citations required**: The prompt enforces `[filename | page/para]` format
-- **Evidence snippets**: Verbatim quotes from source passages are returned alongside answers
-
-### Embedding Fallback
-- If `OPENAI_API_KEY` is set → uses `text-embedding-3-small` (1536-dim)
-- Otherwise → uses `all-MiniLM-L6-v2` via sentence-transformers (384-dim, runs locally, no API needed)
-
-### Generation Fallback
-- If `OPENAI_API_KEY` is set → uses `gpt-4o-mini` with the strict prompt
-- Otherwise → extractive fallback that selects the top passage as the answer (no LLM hallucination possible)
-
-### Optional Sanity/GROQ Integration
-When `SANITY_ENABLED=true` with valid credentials:
-- Reference metadata is synced to Sanity via its HTTP Mutations API
-- FAISS remains the retrieval engine — Sanity is only a metadata/content store
-- This enables GROQ queries for reference metadata (e.g., filtering by file type)
-
----
-
-## Trade-offs
+### Key Design Decisions
 
 | Decision | Rationale |
 |---|---|
-| SQLite over Postgres | Prototype simplicity; zero config for reviewers |
-| FAISS flat index | Good enough for <10K passages; no need for IVF at prototype scale |
-| sentence-transformers default | Works offline, no API key needed — important for evaluation |
-| Single-process backend | Sufficient for demo; would add Celery/background workers for production |
-| No WebSocket streaming | Kept HTTP-only for simplicity; would add SSE for generation progress |
+| **Smart extractive fallback** | Keyword-scored sentence selection from top passages — works offline with zero API cost |
+| **Calibrated confidence scoring** | Piecewise similarity→confidence mapping tuned for MiniLM output ranges |
+| **Header stripping** | Document titles and metadata lines are filtered from passage text before answering |
+| **Low threshold (0.20)** | Prevents false negatives on relevant but semantically distant queries |
+| **SQLite** | Zero-config for reviewers; swap to Postgres for production |
+| **FAISS flat index** | Exact search — fast enough for <10K passages |
+| **200-token passages** | More granular retrieval than larger chunks; better sentence-level matching |
 
----
+### Anti-Hallucination Strategy
 
-## What I'd Improve
-
-1. **Streaming generation** — SSE/WebSocket to show answers as they're generated
-2. **Chunking strategy** — Semantic chunking instead of fixed token windows
-3. **Multi-user FAISS** — Per-user index isolation (currently shared)
-4. **Background processing** — Celery queue for index building and generation
-5. **UI polish** — Tailwind CSS, loading skeletons, drag-and-drop upload
-6. **Containerization** — Docker Compose for one-command deployment
-7. **Evaluation harness** — Automated answer quality metrics (RAGAS, faithfulness)
-8. **Rate limiting** — API rate limits and request throttling
-9. **Caching** — Redis cache for embeddings and frequent queries
-10. **Production DB** — PostgreSQL with pgvector for integrated vector search
+1. **Strict system prompt** — LLM instructed to use ONLY provided passages
+2. **Similarity threshold gate** — below threshold → `Not found in references.`
+3. **Mandatory citations** — prompt enforces `[filename | page/para]` format
+4. **Evidence snippets** — verbatim source quotes returned with every answer
+5. **Extractive fallback** — no LLM means no hallucination possible
 
 ---
 
 ## Project Structure
 
 ```
-Almabase/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI entry point
-│   │   ├── config.py            # Environment config
-│   │   ├── database.py          # SQLAlchemy setup
-│   │   ├── models/
-│   │   │   └── models.py        # ORM models
+│   │   ├── main.py                    # FastAPI entry point, CORS, routers
+│   │   ├── config.py                  # Environment configuration
+│   │   ├── database.py                # SQLAlchemy engine & session
+│   │   ├── models/models.py           # ORM models (User, Question, Answer, etc.)
 │   │   ├── routers/
-│   │   │   ├── auth.py          # Register/login
-│   │   │   ├── uploads.py       # File upload & parsing
-│   │   │   ├── index.py         # FAISS index building
-│   │   │   ├── generate.py      # Answer generation
-│   │   │   ├── answers.py       # Edit answers
-│   │   │   ├── export.py        # XLSX/PDF export
-│   │   │   └── references.py    # Snippet retrieval
+│   │   │   ├── auth.py                # Register / login
+│   │   │   ├── uploads.py             # File upload & parsing
+│   │   │   ├── index.py               # FAISS index building
+│   │   │   ├── generate.py            # Answer generation + regeneration
+│   │   │   ├── answers.py             # Manual answer editing
+│   │   │   ├── export.py              # XLSX / PDF export
+│   │   │   └── references.py          # Passage snippet retrieval
 │   │   └── services/
-│   │       ├── parser.py        # File parsing utilities
-│   │       ├── splitter.py      # Passage splitting
-│   │       ├── embeddings.py    # Embeddings + FAISS
-│   │       └── generation.py    # LLM generation logic
-│   ├── storage/                 # Runtime file storage
+│   │       ├── parser.py              # PDF/XLSX/TXT parsing
+│   │       ├── splitter.py            # Overlapping passage splitting
+│   │       ├── embeddings.py          # Embedding + FAISS build/search
+│   │       └── generation.py          # LLM generation + extractive fallback
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx              # Main app with routing
-│   │   ├── api.js               # API client
-│   │   ├── pages/
-│   │   │   ├── AuthPage.jsx     # Login/register
-│   │   │   ├── Dashboard.jsx    # Upload, index, generate
-│   │   │   └── QuestionnaireView.jsx  # Review answers
-│   │   └── index.css
+│   │   ├── App.jsx                    # Router, Nav, ProtectedRoute
+│   │   ├── api.js                     # API client wrapper
+│   │   ├── index.css                  # Design system (cards, badges, spinners)
+│   │   ├── main.jsx                   # React entry point
+│   │   └── pages/
+│   │       ├── AuthPage.jsx           # Login / register form
+│   │       ├── Dashboard.jsx          # Upload, index, generate
+│   │       └── QuestionnaireView.jsx  # Answer review, edit, export
+│   ├── index.html
 │   ├── package.json
 │   └── vite.config.js
-├── sample_data/                 # Fictional NovaTech Solutions
-├── tests/                       # pytest unit tests
+├── sample_data/                       # NovaTech Solutions test data
+├── tests/                             # pytest unit tests
+├── e2e_test.py                        # Full end-to-end test script
 ├── docs/
-│   ├── demo.sh                  # Bash demo script
-│   ├── demo.ps1                 # PowerShell demo script
-│   └── submission_message.txt
-├── .gitignore
+│   ├── demo.sh                        # Bash demo script
+│   └── demo.ps1                       # PowerShell demo script
 └── README.md
 ```
 
 ---
 
-## Submission Summary
+## What I'd Improve for Production
 
-I built a **Structured Questionnaire Answering Tool** — a full-stack RAG application that uploads questionnaires and reference documents, generates grounded answers with explicit citations, and exports results as XLSX/PDF. The system uses FAISS for vector retrieval with a strict anti-hallucination prompt that ensures every answer is backed by evidence from the uploaded references.
-
-- **Tech**: FastAPI + React + SQLite + FAISS + sentence-transformers
-- **Run locally**: `pip install -r backend/requirements.txt` → `uvicorn app.main:app` → `npm run dev`
-- **Tests**: 15 passing (parsing, splitting, embeddings, retrieval)
-- **What it solves**: Eliminates manual questionnaire answering by automatically finding and citing relevant information from reference documents, while guaranteeing no hallucinated content
+1. **Streaming generation** — SSE/WebSocket to show answers as they're generated
+2. **Semantic chunking** — Content-aware splitting instead of fixed token windows
+3. **Per-user FAISS isolation** — Separate index per user for multi-tenancy
+4. **Background jobs** — Celery/Redis queue for index building and generation
+5. **Docker Compose** — One-command deployment with all services
+6. **Answer quality evaluation** — RAGAS / faithfulness metrics
+7. **Rate limiting & caching** — API throttling + Redis for embeddings cache
+8. **Production DB** — PostgreSQL with pgvector for integrated vector search

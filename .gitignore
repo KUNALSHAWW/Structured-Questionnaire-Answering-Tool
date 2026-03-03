@@ -10,15 +10,15 @@ build/
 venv/
 .venv/
 env/
+.pytest_cache/
 
 # Environment
 .env
 .env.local
 
 # Storage (generated at runtime)
-backend/storage/faiss.index
-backend/storage/references/
-backend/storage/exports/
+backend/storage/
+backend/app.db
 
 # SQLite
 *.db
@@ -27,6 +27,7 @@ backend/storage/exports/
 node_modules/
 frontend/dist/
 frontend/build/
+package-lock.json
 
 # IDE
 .vscode/
@@ -37,6 +38,10 @@ frontend/build/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Logs
 *.log
+
+# Test artifacts
+test_export.*
