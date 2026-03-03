@@ -93,7 +93,12 @@ export default function Dashboard() {
       <h2 className="mb-2">Dashboard</h2>
 
       {error && <p className="error">{error}</p>}
-      {status && <p style={{ color: 'var(--success)', marginBottom: 12 }}>{status}</p>}
+      {status && (
+        <div style={{ color: loading ? 'var(--muted)' : 'var(--success)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {loading && <span className="spinner"></span>}
+          <span>{status}</span>
+        </div>
+      )}
 
       {/* Upload Section */}
       <div className="card">
@@ -120,7 +125,7 @@ export default function Dashboard() {
             </p>
           </div>
           <button onClick={handleBuildIndex} disabled={loading || references.length === 0}>
-            {loading ? 'Building...' : 'Build Index'}
+            {loading && status.includes('Building') ? <><span className="spinner"></span>Building…</> : 'Build Index'}
           </button>
         </div>
       </div>
@@ -137,7 +142,7 @@ export default function Dashboard() {
                 <strong>{q.filename}</strong> — {q.num_questions} questions
               </span>
               <button onClick={() => handleGenerate(q.id)} disabled={loading}>
-                Generate Answers
+                {loading && status.includes('Generating') ? <><span className="spinner"></span>Generating…</> : 'Generate Answers'}
               </button>
             </div>
           ))

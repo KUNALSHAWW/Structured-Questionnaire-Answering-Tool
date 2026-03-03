@@ -36,9 +36,9 @@ SANITY_TOKEN = os.getenv("SANITY_TOKEN", "")
 SANITY_DATASET = os.getenv("SANITY_DATASET", "production")
 
 # ---------- retrieval ----------
-RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.35"))
+RETRIEVAL_THRESHOLD = float(os.getenv("RETRIEVAL_THRESHOLD", "0.20"))
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "5"))
 
 # ---------- passage splitting ----------
-PASSAGE_TOKEN_SIZE = int(os.getenv("PASSAGE_TOKEN_SIZE", "250"))
-PASSAGE_OVERLAP = int(os.getenv("PASSAGE_OVERLAP", "50"))
+PASSAGE_TOKEN_SIZE = int(os.getenv("PASSAGE_TOKEN_SIZE", "200"))
+PASSAGE_OVERLAP = int(os.getenv("PASSAGE_OVERLAP", "40"))

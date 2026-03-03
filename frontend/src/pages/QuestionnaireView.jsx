@@ -163,10 +163,10 @@ export default function QuestionnaireView() {
             <button
               className="secondary"
               onClick={() => handleRegenerate(a.question_id)}
-              disabled={actionLoading === a.question_id}
+              disabled={!!actionLoading}
               style={{ fontSize: 12, padding: '4px 10px' }}
             >
-              🔄 Regenerate
+              {actionLoading === a.question_id ? <><span className="spinner"></span>Regenerating…</> : '🔄 Regenerate'}
             </button>
           </div>
         </div>
