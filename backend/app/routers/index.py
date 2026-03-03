@@ -57,7 +57,7 @@ def build_index(
     db.commit()
 
     # Build FAISS
-    num_indexed = build_faiss_index(all_passages_meta)
+    num_indexed = build_faiss_index(all_passages_meta, user_id=user["id"])
 
     # Optional: sync to Sanity if enabled
     _sync_sanity(refs, all_passages_meta)

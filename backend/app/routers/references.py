@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.routers.auth import get_current_user
 from app.models.models import Reference, Passage
+from app.auth_utils import verify_reference_ownership
 
 router = APIRouter()
 
@@ -18,9 +19,7 @@ def get_snippet(
     db: Session = Depends(get_db),
 ):
     """Return a specific passage snippet by passage_id or first passage of reference."""
-    ref = db.query(Reference).filter(Reference.id == ref_id).first()
-    if not ref:
-        raise HTTPException(404, "Reference not found")
+    ref = verify_reference_ownership(ref_id, user["id"], db)
 
     if passage_id:
         passage = db.query(Passage).filter(

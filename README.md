@@ -120,8 +120,14 @@ Open **http://localhost:3000**
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `JWT_SECRET` | Yes | `dev-secret-change-me` | Secret key for JWT token signing |
+| `JWT_SECRET` | **Yes** | `dev-secret-change-me` | Secret key for JWT token signing. **Must be changed in production.** |
+| `ENV` | No | `development` | Set to `production` to enforce JWT_SECRET |
 | `OPENAI_API_KEY` | No | — | Enables OpenAI embeddings + LLM generation |
+| `ALLOWED_ORIGINS` | No | `http://localhost:3000,http://localhost:5173` | Comma-separated CORS origins |
+| `MAX_UPLOAD_BYTES` | No | `52428800` (50 MB) | Max upload file size in bytes |
+| `MIN_PASSWORD_LENGTH` | No | `8` | Minimum password length |
+| `JWT_EXPIRY_MINUTES` | No | `60` | JWT token lifetime |
+| `USE_BACKGROUND_JOBS` | No | `false` | Enable async job queue for generation |
 | `RETRIEVAL_THRESHOLD` | No | `0.20` | Minimum similarity score to consider a passage relevant |
 | `RETRIEVAL_TOP_K` | No | `5` | Number of passages to retrieve per question |
 | `PASSAGE_TOKEN_SIZE` | No | `200` | Token count per passage chunk |
@@ -133,6 +139,7 @@ Open **http://localhost:3000**
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/api/health` | Health check (status, version, timestamp) |
 | `POST` | `/api/auth/register` | Register new user |
 | `POST` | `/api/auth/login` | Login → JWT token |
 | `POST` | `/api/uploads/questionnaire` | Upload questionnaire file |
@@ -142,6 +149,7 @@ Open **http://localhost:3000**
 | `GET` | `/api/uploads/questionnaire/:id/questions` | Get parsed questions |
 | `POST` | `/api/index/build` | Build FAISS index from references |
 | `POST` | `/api/generate` | Generate answers for a questionnaire |
+| `GET` | `/api/jobs/:job_id` | Poll background job status |
 | `POST` | `/api/regenerate/:question_id` | Regenerate one answer |
 | `PUT` | `/api/answers/:answer_id` | Edit an answer |
 | `GET` | `/api/runs` | List generation runs |
@@ -154,12 +162,20 @@ Open **http://localhost:3000**
 ## Testing
 
 ```bash
-# Unit tests (15 tests — parsing, splitting, embeddings, retrieval)
+# Unit + security tests
 python -m pytest tests/ -v
 
 # End-to-end test (register → upload → index → generate → export)
 python e2e_test.py
 ```
+
+### Security Tests (`tests/test_security_isolation.py`)
+- Auth validation (email format, password length)
+- Per-user FAISS index isolation
+- Prompt injection sanitisation
+- Citation verification
+- CORS configuration
+- Health endpoint schema
 
 ---
 
@@ -233,23 +249,25 @@ The `sample_data/` directory contains a fictional company **"NovaTech Solutions"
 ```
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                    # FastAPI entry point, CORS, routers
+│   │   ├── main.py                    # FastAPI entry point, CORS, health, logging
 │   │   ├── config.py                  # Environment configuration
 │   │   ├── database.py                # SQLAlchemy engine & session
-│   │   ├── models/models.py           # ORM models (User, Question, Answer, etc.)
+│   │   ├── auth_utils.py              # Shared ownership verification helpers
+│   │   ├── models/models.py           # ORM models (User, Question, Answer, Job, etc.)
 │   │   ├── routers/
-│   │   │   ├── auth.py                # Register / login
-│   │   │   ├── uploads.py             # File upload & parsing
-│   │   │   ├── index.py               # FAISS index building
-│   │   │   ├── generate.py            # Answer generation + regeneration
-│   │   │   ├── answers.py             # Manual answer editing
-│   │   │   ├── export.py              # XLSX / PDF export
-│   │   │   └── references.py          # Passage snippet retrieval
+│   │   │   ├── auth.py                # Register / login with validation
+│   │   │   ├── uploads.py             # Secure file upload & parsing
+│   │   │   ├── index.py               # Per-user FAISS index building
+│   │   │   ├── generate.py            # Answer generation + background jobs
+│   │   │   ├── answers.py             # Manual answer editing (IDOR-safe)
+│   │   │   ├── export.py              # XLSX / PDF export (sanitised filenames)
+│   │   │   └── references.py          # Passage snippet retrieval (IDOR-safe)
 │   │   └── services/
 │   │       ├── parser.py              # PDF/XLSX/TXT parsing
 │   │       ├── splitter.py            # Overlapping passage splitting
-│   │       ├── embeddings.py          # Embedding + FAISS build/search
-│   │       └── generation.py          # LLM generation + extractive fallback
+│   │       ├── embeddings.py          # Per-user embedding + FAISS build/search
+│   │       └── generation.py          # LLM generation + prompt injection guard
+│   ├── worker.py                      # Background job worker
 │   ├── requirements.txt
 │   └── .env.example
 ├── frontend/
@@ -266,9 +284,13 @@ The `sample_data/` directory contains a fictional company **"NovaTech Solutions"
 │   ├── package.json
 │   └── vite.config.js
 ├── sample_data/                       # NovaTech Solutions test data
-├── tests/                             # pytest unit tests
+├── tests/                             # pytest unit + security tests
 ├── e2e_test.py                        # Full end-to-end test script
+├── Dockerfile                         # Production container image
+├── .github/workflows/ci.yml           # GitHub Actions CI pipeline
 ├── docs/
+│   ├── deploy_railway.md              # Deployment guide (Railway/Fly/CF Pages)
+│   ├── run_worker.sh                  # Background worker startup script
 │   ├── demo.sh                        # Bash demo script
 │   └── demo.ps1                       # PowerShell demo script
 └── README.md
@@ -276,13 +298,44 @@ The `sample_data/` directory contains a fictional company **"NovaTech Solutions"
 
 ---
 
-## What I'd Improve for Production
+## Security Hardening (v1.0)
+
+The following production-readiness fixes have been applied:
+
+| # | Fix | Status |
+|---|---|---|
+| 1 | JWT secret enforcement + password validation | ✅ |
+| 2 | Upload sanitisation (UUID filenames, size limit, path traversal) | ✅ |
+| 3 | Per-user FAISS isolation (multi-tenant safe) | ✅ |
+| 4 | IDOR prevention (ownership checks on all mutations) | ✅ |
+| 5 | Background job queue (optional, poll-based) | ✅ |
+| 6 | Prompt injection mitigation + citation verification | ✅ |
+| 7 | Export filename sanitisation | ✅ |
+| 8 | CORS hardening (explicit origins, not `*`) | ✅ |
+| 9 | Structured logging + global error handler | ✅ |
+| 10 | Health endpoint (`/api/health`) | ✅ |
+| 11 | Dockerfile + GitHub Actions CI | ✅ |
+| 12 | Deployment docs (Railway / Fly / Cloudflare Pages) | ✅ |
+
+---
+
+## Deployment
+
+See [docs/deploy_railway.md](docs/deploy_railway.md) for full deployment instructions.
+
+```bash
+# Quick Docker test
+docker build -t almabase-rag .
+docker run -p 8000:8000 -e JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))") almabase-rag
+```
+
+---
+
+## What I'd Improve Next
 
 1. **Streaming generation** — SSE/WebSocket to show answers as they're generated
 2. **Semantic chunking** — Content-aware splitting instead of fixed token windows
-3. **Per-user FAISS isolation** — Separate index per user for multi-tenancy
-4. **Background jobs** — Celery/Redis queue for index building and generation
-5. **Docker Compose** — One-command deployment with all services
-6. **Answer quality evaluation** — RAGAS / faithfulness metrics
-7. **Rate limiting & caching** — API throttling + Redis for embeddings cache
-8. **Production DB** — PostgreSQL with pgvector for integrated vector search
+3. **Rate limiting & caching** — API throttling + Redis for embeddings cache
+4. **Production DB** — PostgreSQL with pgvector for integrated vector search
+5. **Answer quality evaluation** — RAGAS / faithfulness metrics
+6. **Docker Compose** — One-command deployment with all services

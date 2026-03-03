@@ -1,6 +1,7 @@
 """Export router – generate downloadable XLSX or PDF for a run."""
 
 import json
+import re
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -12,6 +13,13 @@ from app.models.models import Run, Questionnaire
 from app.config import EXPORTS_DIR
 
 router = APIRouter()
+
+
+def _safe_download_name(filename: str, ext: str) -> str:
+    """Sanitise questionnaire filename for use as download name."""
+    stem = Path(filename).stem if filename else "export"
+    stem = re.sub(r"[^a-zA-Z0-9_\-]", "_", stem)[:80]
+    return f"answers_{stem}.{ext}"
 
 
 @router.get("/{run_id}")
@@ -26,7 +34,8 @@ def export_run(
         raise HTTPException(404, "Run not found")
 
     q = db.query(Questionnaire).filter(Questionnaire.id == run.questionnaire_id).first()
-    answers = sorted(run.answers, key=lambda a: a.question.index)
+    # Stable ordering by question index
+    answers = sorted(run.answers, key=lambda a: (a.question.index if a.question else 0))
 
     if format == "xlsx":
         return _export_xlsx(run_id, q, answers)
@@ -66,7 +75,7 @@ def _export_xlsx(run_id, questionnaire, answers):
     return FileResponse(
         str(filepath),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=f"answers_{questionnaire.filename.rsplit('.', 1)[0]}.xlsx",
+        filename=_safe_download_name(questionnaire.filename, "xlsx"),
     )
 
 
@@ -103,5 +112,5 @@ def _export_pdf(run_id, questionnaire, answers):
     return FileResponse(
         str(filepath),
         media_type="application/pdf",
-        filename=f"answers_{questionnaire.filename.rsplit('.', 1)[0]}.pdf",
+        filename=_safe_download_name(questionnaire.filename, "pdf"),
     )

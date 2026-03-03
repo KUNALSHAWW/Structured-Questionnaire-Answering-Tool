@@ -1,19 +1,23 @@
 """Auth router – register & login with JWT."""
 
-from datetime import datetime, timedelta
+import re
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 import bcrypt as _bcrypt
 from jose import jwt
 
 from app.database import get_db
 from app.models.models import User
-from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_MINUTES
+from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_MINUTES, MIN_PASSWORD_LENGTH
 
 router = APIRouter()
 _oauth2 = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+# Simple email regex (avoids pydantic[email] extra dep)
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
 
 def _hash_password(password: str) -> str:
@@ -29,6 +33,21 @@ class AuthRequest(BaseModel):
     email: str
     password: str
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < MIN_PASSWORD_LENGTH:
+            raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+        return v
+
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -40,7 +59,7 @@ def _create_token(user_id: str, email: str) -> str:
     payload = {
         "sub": user_id,
         "email": email,
-        "exp": datetime.utcnow() + timedelta(minutes=JWT_EXPIRY_MINUTES),
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRY_MINUTES),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 

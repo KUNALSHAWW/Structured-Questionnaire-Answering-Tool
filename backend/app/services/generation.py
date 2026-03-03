@@ -31,14 +31,60 @@ EVIDENCE_SNIPPETS:
 If not found, the reply must be exactly:
 Not found in references."""
 
+# ---------- prompt injection mitigation ----------
 
-def generate_answer(question_text: str, threshold: float = RETRIEVAL_THRESHOLD, top_k: int = RETRIEVAL_TOP_K) -> dict:
+_INJECTION_PATTERNS = [
+    r"ignore\s+(all\s+)?previous\s+instructions",
+    r"forget\s+(all\s+)?previous",
+    r"disregard\s+(all\s+)?previous",
+    r"override\s+(all\s+)?previous",
+    r"(?:output|reveal|show|print|repeat)\s+(?:the\s+)?system\s*prompt",
+    r"you\s+are\s+now",
+    r"new\s+instructions",
+    r"act\s+as\s+(?:a\s+)?(?:different|new)",
+    r"pretend\s+(?:you\s+are|to\s+be)",
+    r"do\s+not\s+follow\s+(?:the\s+)?(?:above|previous)",
+]
+
+_INJECTION_RE = re.compile("|".join(_INJECTION_PATTERNS), re.IGNORECASE)
+
+
+def _sanitize_for_prompt(text: str) -> str:
+    """Strip known prompt-injection phrases from user-supplied text."""
+    return _INJECTION_RE.sub("[REDACTED]", text)
+
+
+def _verify_citations(citations: list[str], results: list[dict]) -> list[str]:
+    """Verify that generated citations correspond to retrieved passages.
+
+    Returns only citations that match a retrieved passage filename.
+    """
+    if not results:
+        return []
+    # Build set of valid filenames from retrieved passages
+    valid_filenames = {r["filename"].lower() for r in results}
+    verified = []
+    for cit in citations:
+        # Citation format: "filename | page/para"
+        parts = cit.split("|")
+        cit_filename = parts[0].strip().lower() if parts else ""
+        if any(vf in cit_filename or cit_filename in vf for vf in valid_filenames):
+            verified.append(cit)
+        else:
+            logger.warning("Unverified citation removed: %s", cit)
+    return verified
+
+
+def generate_answer(question_text: str, user_id: str, threshold: float = RETRIEVAL_THRESHOLD, top_k: int = RETRIEVAL_TOP_K) -> dict:
     """Retrieve passages and generate a grounded answer.
 
     Returns: {answer_text, citations: list[str], evidence_snippets: list[str], confidence_score: int}
     """
-    # Retrieve
-    results = search(question_text, top_k=top_k)
+    # Sanitize question for prompt injection
+    safe_question = _sanitize_for_prompt(question_text)
+
+    # Retrieve from user-specific index
+    results = search(safe_question, user_id=user_id, top_k=top_k)
 
     if not results:
         return _not_found_result()
@@ -63,12 +109,19 @@ def generate_answer(question_text: str, threshold: float = RETRIEVAL_THRESHOLD, 
     # Build passages block
     passages_block = _build_passages_block(results)
 
-    # Call LLM
-    raw_reply = _call_llm(question_text, passages_block, results)
+    # Call LLM (use safe_question in prompt to avoid injection)
+    raw_reply = _call_llm(safe_question, passages_block, results)
 
     # Parse reply
     parsed = _parse_reply(raw_reply, results)
-    parsed["confidence_score"] = confidence_score
+
+    # Verify citations against retrieved passages
+    parsed["citations"] = _verify_citations(parsed["citations"], results)
+    if not parsed["citations"] and parsed["answer_text"] != "Not found in references.":
+        # If all citations were stripped, answer is unverifiable — mark low confidence
+        parsed["confidence_score"] = min(confidence_score, 20)
+    else:
+        parsed["confidence_score"] = confidence_score
     return parsed
 
 

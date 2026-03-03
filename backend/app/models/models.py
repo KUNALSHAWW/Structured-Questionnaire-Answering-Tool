@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Float, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -11,12 +11,16 @@ def _uuid():
     return str(uuid.uuid4())
 
 
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=_uuid)
     email = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
 
 
 class Questionnaire(Base):
@@ -25,7 +29,7 @@ class Questionnaire(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False)  # pdf, xlsx, txt
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
     questions = relationship("Question", back_populates="questionnaire", cascade="all,delete")
 
 
@@ -47,7 +51,7 @@ class Reference(Base):
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False)
     stored_path = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
     passages = relationship("Passage", back_populates="reference", cascade="all,delete")
 
 
@@ -67,7 +71,7 @@ class Run(Base):
     id = Column(String, primary_key=True, default=_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     questionnaire_id = Column(String, ForeignKey("questionnaires.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
     answers = relationship("Answer", back_populates="run", cascade="all,delete")
 
 
@@ -81,6 +85,20 @@ class Answer(Base):
     evidence_snippets = Column(Text, default="")  # JSON list of snippet strings
     confidence_score = Column(Integer, default=0)
     is_edited = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utcnow)
     run = relationship("Run", back_populates="answers")
     question = relationship("Question", back_populates="answers")
+
+
+class Job(Base):
+    """Lightweight job queue for background generation tasks."""
+    __tablename__ = "jobs"
+    id = Column(String, primary_key=True, default=_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    type = Column(String, nullable=False, default="generate")  # generate, regenerate
+    payload_json = Column(Text, nullable=False, default="{}")
+    status = Column(String, nullable=False, default="pending")  # pending, running, failed, complete
+    result_json = Column(Text, default="{}")
+    error_message = Column(Text, default="")
+    created_at = Column(DateTime, default=_utcnow)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)

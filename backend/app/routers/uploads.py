@@ -3,16 +3,51 @@
 import os
 import json
 import re
+import uuid
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routers.auth import get_current_user
 from app.models.models import Questionnaire, Question, Reference
-from app.config import UPLOADS_DIR, REFERENCES_DIR
+from app.config import UPLOADS_DIR, REFERENCES_DIR, MAX_UPLOAD_BYTES
 from app.services.parser import parse_questionnaire, extract_reference_text
 
 router = APIRouter()
+
+# ---------- upload helpers ----------
+
+def _safe_filename(original: str) -> str:
+    """Sanitize filename: strip path components, prefix with UUID."""
+    name = Path(original).name  # strip any directory traversal
+    name = re.sub(r"[^\w.\-]", "_", name)  # keep only safe chars
+    return f"{uuid.uuid4().hex}_{name}"
+
+
+def _user_upload_dir(user_id: str) -> Path:
+    """Return per-user upload directory, creating it if needed."""
+    d = UPLOADS_DIR / user_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _user_reference_dir(user_id: str) -> Path:
+    """Return per-user reference directory, creating it if needed."""
+    d = REFERENCES_DIR / user_id
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    """Read uploaded file with size limit enforcement."""
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            413,
+            f"File too large. Maximum size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+        )
+    return content
 
 
 @router.post("/questionnaire")
@@ -26,9 +61,11 @@ async def upload_questionnaire(
     if ext not in ("pdf", "xlsx", "txt"):
         raise HTTPException(400, "Unsupported file type. Use PDF, XLSX, or TXT.")
 
-    # Save file
-    dest = UPLOADS_DIR / file.filename
-    content = await file.read()
+    content = await _read_upload(file)
+
+    # Save with sanitized name in per-user dir
+    safe_name = _safe_filename(file.filename)
+    dest = _user_upload_dir(user["id"]) / safe_name
     with open(dest, "wb") as f:
         f.write(content)
 
@@ -71,13 +108,16 @@ async def upload_reference(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Upload a reference document (PDF/TXT/CSV)."""
+    """Upload a reference document (PDF/TXT/CSV/DOCX)."""
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in ("pdf", "txt", "csv", "docx"):
         raise HTTPException(400, "Unsupported file type. Use PDF, TXT, CSV, or DOCX.")
 
-    dest = REFERENCES_DIR / file.filename
-    content = await file.read()
+    content = await _read_upload(file)
+
+    # Save with sanitized name in per-user dir
+    safe_name = _safe_filename(file.filename)
+    dest = _user_reference_dir(user["id"]) / safe_name
     with open(dest, "wb") as f:
         f.write(content)
 

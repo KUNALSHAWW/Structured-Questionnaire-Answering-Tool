@@ -43,8 +43,9 @@ class TestEmbeddingsAndRetrieval:
     def test_build_and_search(self):
         """Build a tiny index and search it."""
         try:
+            import faiss  # noqa: F401
             from app.services.embeddings import build_faiss_index, search
-        except ImportError:
+        except (ImportError, ModuleNotFoundError):
             pytest.skip("FAISS or sentence-transformers not installed")
 
         passages = [
@@ -64,10 +65,10 @@ class TestEmbeddingsAndRetrieval:
             },
         ]
 
-        num = build_faiss_index(passages)
+        num = build_faiss_index(passages, user_id="test_user_retrieval")
         assert num == 2
 
-        results = search("Does the company have ISO 27001?", top_k=2)
+        results = search("Does the company have ISO 27001?", user_id="test_user_retrieval", top_k=2)
         assert len(results) >= 1
         # Top result should be about ISO
         assert "ISO" in results[0]["text"] or "27001" in results[0]["text"]

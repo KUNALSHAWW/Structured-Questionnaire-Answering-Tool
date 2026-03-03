@@ -8,7 +8,8 @@ from typing import Optional
 
 from app.database import get_db
 from app.routers.auth import get_current_user
-from app.models.models import Answer
+from app.models.models import Answer, Run
+from app.auth_utils import verify_answer_ownership
 
 router = APIRouter()
 
@@ -25,9 +26,7 @@ def edit_answer(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    ans = db.query(Answer).filter(Answer.id == answer_id).first()
-    if not ans:
-        raise HTTPException(404, "Answer not found")
+    ans = verify_answer_ownership(answer_id, user["id"], db)
 
     ans.answer_text = body.answer_text
     if body.citations is not None:
