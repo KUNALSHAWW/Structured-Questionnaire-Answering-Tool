@@ -1,0 +1,39 @@
+NovaTech Solutions – Disaster Recovery & Business Continuity Plan
+Document ID: DR-BC-2025-003 | Last Updated: January 15, 2026
+
+1. OVERVIEW
+NovaTech Solutions maintains a comprehensive Disaster Recovery (DR) and Business Continuity Plan (BCP) to ensure minimal disruption to operations and client services. The plan is reviewed and tested semi-annually.
+
+2. RECOVERY OBJECTIVES
+- Recovery Time Objective (RTO): Critical systems must be restored within 4 hours.
+- Recovery Point Objective (RPO): Maximum acceptable data loss is 1 hour of transactional data.
+- For non-critical systems, RTO is 24 hours and RPO is 12 hours.
+
+3. INFRASTRUCTURE REDUNDANCY
+- Primary data centre: AWS US-East-1 (Virginia).
+- Secondary (failover) data centre: AWS US-West-2 (Oregon).
+- Database replication: Synchronous replication between primary and secondary sites using Amazon Aurora Global Database.
+- Object storage: Amazon S3 with cross-region replication enabled.
+
+4. BACKUP PROCEDURES
+- Full database backups are taken daily at 02:00 UTC.
+- Incremental backups every 30 minutes.
+- Backups are encrypted with AES-256 and stored in a geographically separate region (AWS EU-West-1).
+- Backup integrity tests are performed weekly.
+
+5. INCIDENT RESPONSE TEAM
+The DR/BC Incident Response Team consists of:
+- Incident Commander: VP of Engineering
+- Communications Lead: Director of Corporate Communications
+- Technical Lead: Senior Site Reliability Engineer
+- Business Lead: COO
+
+6. COMMUNICATION PLAN
+- Internal: Slack channel #incident-response + automated PagerDuty alerts.
+- External: Status page (status.novatech.io) updated within 15 minutes of incident declaration.
+- Client notification: Email notification within 1 hour for Severity 1 incidents.
+
+7. TESTING & DRILLS
+- Tabletop exercises: Conducted quarterly with leadership team.
+- Full failover drill: Conducted semi-annually; last drill completed November 2025 with successful failover in 2 hours 47 minutes.
+- Results are documented and improvement actions tracked in the DR improvement register.

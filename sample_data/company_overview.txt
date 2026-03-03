@@ -1,0 +1,14 @@
+NovaTech Solutions – Company Overview
+
+NovaTech Solutions is a mid-sized technology company headquartered in Austin, Texas, founded in 2012 by Maria Chen and David Okafor. The company's mission is to "empower organisations with intelligent automation tools that reduce operational friction and unlock human potential."
+
+As of January 2026, NovaTech Solutions employs 342 full-time team members across four offices: Austin (HQ), Denver, Toronto, and London. The company operates in three business segments: Enterprise Automation Platform, Data Analytics Suite, and Managed IT Services.
+
+For fiscal year 2025, NovaTech Solutions reported total annual revenue of $78.4 million, a 23% year-over-year increase. The Enterprise Automation Platform accounted for 55% of revenue, Data Analytics Suite for 30%, and Managed IT Services for 15%.
+
+Key products include:
+- AutoFlow Pro: An enterprise workflow automation platform that integrates with over 200 SaaS applications.
+- InsightEngine: A real-time data analytics dashboard with predictive modelling capabilities.
+- NovaCare Managed Services: 24/7 IT monitoring, incident response, and infrastructure management for mid-market clients.
+
+The company serves over 1,200 enterprise clients across healthcare, financial services, manufacturing, and education sectors. Notable clients include MedFirst Health Systems, Pinnacle Financial Group, and Greenfield University.

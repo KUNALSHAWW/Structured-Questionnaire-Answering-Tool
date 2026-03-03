@@ -1,0 +1,12 @@
+Hi! I've completed the Structured Questionnaire Answering Tool for the Almabase GTM Engineering internship.
+
+The tool allows users to upload questionnaires and reference documents, then generates grounded answers with citations using RAG (Retrieval-Augmented Generation). Every answer includes explicit citations and evidence snippets from the source documents, and returns "Not found in references." when evidence is insufficient — ensuring zero hallucination.
+
+Key highlights:
+• Full-stack: FastAPI backend + React frontend with JWT auth, file upload, answer generation, editing, regeneration, and XLSX/PDF export.
+• RAG pipeline: FAISS vector search with sentence-transformers (local, no API key needed; optional OpenAI embeddings), strict anti-hallucination prompt, and configurable confidence threshold.
+• Sample data included: Fictional "NovaTech Solutions" company with questionnaire (10 Qs) and 5 reference docs for immediate demo.
+• Optional Sanity/GROQ integration for metadata storage (activated via env vars).
+• 15 unit tests covering parsing, splitting, embeddings, and retrieval — all passing.
+• GitHub: [repository link]
+• Local run: clone → pip install → uvicorn → npm dev (2 terminals, ~2 min setup)

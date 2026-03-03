@@ -1,0 +1,40 @@
+NovaTech Solutions – Data Privacy & Security Policy
+Document Version 4.1 | Effective Date: March 1, 2025
+
+1. PURPOSE
+This policy establishes the framework for protecting personal and corporate data processed by NovaTech Solutions and its subsidiaries.
+
+2. DATA CLASSIFICATION
+All data handled by NovaTech Solutions is classified into four tiers:
+- Public: Marketing materials, blog posts, press releases.
+- Internal: Internal memos, project plans, non-sensitive reports.
+- Confidential: Customer data, financial records, HR information.
+- Restricted: Encryption keys, authentication credentials, health records.
+
+3. DATA RETENTION
+- Customer transactional data is retained for seven (7) years after the last transaction date.
+- Employee records are retained for five (5) years following termination.
+- System logs are retained for twelve (12) months and then purged securely.
+- Marketing opt-in records are retained until the individual revokes consent.
+
+4. DATA PRIVACY PRINCIPLES
+NovaTech Solutions adheres to the following principles:
+a) Data Minimisation – only collect data necessary for the stated purpose.
+b) Purpose Limitation – data is used exclusively for the purpose disclosed at collection.
+c) Storage Limitation – data is stored no longer than required by retention schedule.
+d) Integrity & Confidentiality – appropriate technical and organisational measures protect data.
+
+5. SECURITY CONTROLS
+- All data at rest is encrypted using AES-256.
+- Data in transit is secured via TLS 1.3.
+- Multi-factor authentication (MFA) is mandatory for all employee accounts.
+- Quarterly penetration testing is conducted by an independent third party.
+
+6. CERTIFICATIONS
+NovaTech Solutions achieved ISO 27001 certification in September 2023 (Certificate No. IS-782145). The certification scope covers the Enterprise Automation Platform and Data Analytics Suite infrastructure. The certification is audited annually and was last reaffirmed in October 2024.
+
+7. BREACH NOTIFICATION
+In the event of a data breach, NovaTech Solutions will:
+- Notify affected individuals within 72 hours of discovery.
+- Report the breach to relevant supervisory authorities as required by GDPR and CCPA.
+- Conduct a root-cause analysis and remediation within 30 days.
