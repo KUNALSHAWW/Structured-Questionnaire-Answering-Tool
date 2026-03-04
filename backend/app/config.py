@@ -10,8 +10,10 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # ---------- paths ----------
+# DATA_DIR allows persisting DB + storage on a mounted volume (e.g. Railway volume at /data)
+DATA_DIR = Path(os.getenv("DATA_DIR", str(Path(__file__).resolve().parent.parent)))
 BASE_DIR = Path(__file__).resolve().parent.parent
-STORAGE_DIR = BASE_DIR / "storage"
+STORAGE_DIR = DATA_DIR / "storage"
 REFERENCES_DIR = STORAGE_DIR / "references"
 EXPORTS_DIR = STORAGE_DIR / "exports"
 UPLOADS_DIR = STORAGE_DIR / "uploads"
@@ -25,7 +27,7 @@ for d in (STORAGE_DIR, REFERENCES_DIR, EXPORTS_DIR, UPLOADS_DIR, INDEX_PERSIST_P
     d.mkdir(parents=True, exist_ok=True)
 
 # ---------- database ----------
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'app.db'}")
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'app.db'}")
 
 # ---------- auth ----------
 _DEFAULT_SECRET = "dev-secret-change-me"

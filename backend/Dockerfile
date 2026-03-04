@@ -20,8 +20,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy app source
 COPY . .
 
-# Create storage dirs
+# Create storage dirs (used if no volume is mounted)
 RUN mkdir -p storage/uploads storage/references storage/exports storage/indices
+# Create persistent data dir (Railway volume mount point)
+RUN mkdir -p /data/storage/uploads /data/storage/references /data/storage/exports /data/storage/indices
 
 EXPOSE 8000
 

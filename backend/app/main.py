@@ -9,7 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.database import engine, Base
-from app.config import ALLOWED_ORIGINS
+from app.config import (
+    ALLOWED_ORIGINS,
+    STORAGE_DIR,
+    REFERENCES_DIR,
+    EXPORTS_DIR,
+    UPLOADS_DIR,
+    INDEX_PERSIST_PATH,
+)
 from app.routers import auth, uploads, index, generate, answers, export, references
 
 # ---------- Structured logging ----------
@@ -18,6 +25,11 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 logger = logging.getLogger("app")
+
+# ---------- Ensure persistent storage dirs exist ----------
+for d in (STORAGE_DIR, REFERENCES_DIR, EXPORTS_DIR, UPLOADS_DIR, INDEX_PERSIST_PATH):
+    d.mkdir(parents=True, exist_ok=True)
+logger.info("Storage root: %s", STORAGE_DIR)
 
 # Create tables on startup
 Base.metadata.create_all(bind=engine)
