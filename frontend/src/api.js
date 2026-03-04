@@ -16,7 +16,27 @@ async function request(path, opts = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  // Use a longer timeout for generation requests (5 min), default 60s for others
+  const timeoutMs = opts.timeout || (path.includes('/generate') ? 300000 : 60000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      ...opts,
+      headers,
+      signal: opts.signal || controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timed out. The server is still processing — try refreshing in a moment.');
+    }
+    throw new Error('Network error — check your connection and try again.');
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (res.status === 401) {
     localStorage.removeItem('token');
@@ -56,6 +76,15 @@ export const api = {
     fd.append('file', file);
     return request('/uploads/reference', { method: 'POST', body: fd });
   },
+
+  uploadReferences: (files) => {
+    const fd = new FormData();
+    for (const file of files) fd.append('files', file);
+    return request('/uploads/references/bulk', { method: 'POST', body: fd });
+  },
+
+  deleteReference: (refId) =>
+    request(`/uploads/reference/${refId}`, { method: 'DELETE' }),
 
   listQuestionnaires: () => request('/uploads/questionnaires'),
   listReferences: () => request('/uploads/references'),

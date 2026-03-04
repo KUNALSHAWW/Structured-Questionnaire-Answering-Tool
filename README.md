@@ -14,11 +14,20 @@ A full-stack RAG (Retrieval-Augmented Generation) application that automatically
 ## Demo Flow
 
 1. **Register/Login** → JWT-authenticated session
-2. **Upload** questionnaire (PDF/XLSX/TXT) + reference documents (PDF/TXT/CSV/DOCX)
+2. **Upload** questionnaire (PDF/XLSX/TXT) + reference documents (PDF/TXT/CSV/DOCX) — supports multi-file selection
 3. **Build Index** → passages are split, embedded, and indexed in FAISS
 4. **Generate Answers** → each question is matched to relevant passages and answered with citations
 5. **Review** → confidence scores, evidence snippets, edit or regenerate individual answers
 6. **Export** → download as XLSX or PDF
+
+---
+
+## Live Deployment
+
+| Component | URL |
+|---|---|
+| **Frontend** | [structured-questionnaire-answering-tool.pages.dev](https://structured-questionnaire-answering-tool.pages.dev) |
+| **Backend API** | [almabase-backend-production.up.railway.app](https://almabase-backend-production.up.railway.app/api/health) |
 
 ---
 
@@ -30,6 +39,9 @@ A full-stack RAG (Retrieval-Augmented Generation) application that automatically
 | **File Upload & Parsing** | Automatically extract questions from PDF/XLSX/TXT questionnaires |
 | **RAG Pipeline** | Passage splitting → embedding → FAISS retrieval → grounded generation |
 | **Anti-Hallucination** | Strict prompt enforcement + similarity threshold gating |
+| **Multi-File Upload** | Upload multiple reference documents at once with drag-and-drop |
+| **Duplicate Prevention** | Same filename cannot be uploaded twice per user (409 conflict) |
+| **Reference Deletion** | Remove uploaded references with one click |
 | **Citations** | Every answer includes `[filename \| page/para]` source references |
 | **Evidence Snippets** | Verbatim quotes from source passages shown alongside answers |
 | **Confidence Scores** | 0–100% score derived from retrieval similarity with calibrated mapping |
@@ -143,7 +155,9 @@ Open **http://localhost:3000**
 | `POST` | `/api/auth/register` | Register new user |
 | `POST` | `/api/auth/login` | Login → JWT token |
 | `POST` | `/api/uploads/questionnaire` | Upload questionnaire file |
-| `POST` | `/api/uploads/reference` | Upload reference document |
+| `POST` | `/api/uploads/reference` | Upload single reference document |
+| `POST` | `/api/uploads/references/bulk` | Upload multiple references at once |
+| `DELETE` | `/api/uploads/reference/:id` | Delete a reference document |
 | `GET` | `/api/uploads/questionnaires` | List questionnaires |
 | `GET` | `/api/uploads/references` | List references |
 | `GET` | `/api/uploads/questionnaire/:id/questions` | Get parsed questions |
@@ -183,6 +197,8 @@ python e2e_test.py
 
 The `sample_data/` directory contains a fictional company **"NovaTech Solutions"** with:
 
+**Text-based samples:**
+
 | File | Content |
 |---|---|
 | `questionnaire.txt` | 10 questions covering company overview, policies, HR, DR, ESG |
@@ -191,6 +207,14 @@ The `sample_data/` directory contains a fictional company **"NovaTech Solutions"
 | `hr_report.txt` | Headcount (342 FTE), turnover rate, remote work policy |
 | `disaster_recovery.txt` | DR/BCP plan with RTO/RPO targets, testing schedule |
 | `esg_report.txt` | Environmental commitments, carbon goals, governance |
+
+**PDF samples** (generated via `scripts/generate_sample_pdfs.py`):
+
+| File | Content |
+|---|---|
+| `questionnaire_vendor_assessment.pdf` | 10-question vendor due-diligence questionnaire |
+| `it_infrastructure_report.pdf` | IT systems, cybersecurity certs, DR, backup strategy, VRM |
+| `financial_summary.pdf` | Revenue ($78.4M), profitability, external audit (KPMG), ESG |
 
 ---
 
@@ -231,6 +255,7 @@ The `sample_data/` directory contains a fictional company **"NovaTech Solutions"
 | **Header stripping** | Document titles and metadata lines are filtered from passage text before answering |
 | **Low threshold (0.20)** | Prevents false negatives on relevant but semantically distant queries |
 | **SQLite** | Zero-config for reviewers; swap to Postgres for production |
+| **Persistent volume** | Railway volume at `/data` keeps DB + uploads across deploys |
 | **FAISS flat index** | Exact search — fast enough for <10K passages |
 | **200-token passages** | More granular retrieval than larger chunks; better sentence-level matching |
 
@@ -256,7 +281,7 @@ The `sample_data/` directory contains a fictional company **"NovaTech Solutions"
 │   │   ├── models/models.py           # ORM models (User, Question, Answer, Job, etc.)
 │   │   ├── routers/
 │   │   │   ├── auth.py                # Register / login with validation
-│   │   │   ├── uploads.py             # Secure file upload & parsing
+│   │   │   ├── uploads.py             # File upload, multi-upload, duplicate check, delete
 │   │   │   ├── index.py               # Per-user FAISS index building
 │   │   │   ├── generate.py            # Answer generation + background jobs
 │   │   │   ├── answers.py             # Manual answer editing (IDOR-safe)
@@ -283,7 +308,8 @@ The `sample_data/` directory contains a fictional company **"NovaTech Solutions"
 │   ├── index.html
 │   ├── package.json
 │   └── vite.config.js
-├── sample_data/                       # NovaTech Solutions test data
+├── sample_data/                       # NovaTech Solutions test data (TXT + PDF)
+├── scripts/                           # Utility scripts (PDF sample generator)
 ├── tests/                             # pytest unit + security tests
 ├── e2e_test.py                        # Full end-to-end test script
 ├── Dockerfile                         # Production container image
@@ -339,3 +365,4 @@ docker run -p 8000:8000 -e JWT_SECRET=$(python -c "import secrets; print(secrets
 4. **Production DB** — PostgreSQL with pgvector for integrated vector search
 5. **Answer quality evaluation** — RAGAS / faithfulness metrics
 6. **Docker Compose** — One-command deployment with all services
+7. **Drag & drop upload** — Visual drop zone with progress indicators

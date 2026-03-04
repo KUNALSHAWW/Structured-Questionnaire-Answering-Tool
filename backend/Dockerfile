@@ -28,4 +28,5 @@ RUN mkdir -p /data/storage/uploads /data/storage/references /data/storage/export
 EXPOSE 8000
 
 # Railway sets $PORT; shell form allows variable expansion
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+# --timeout-keep-alive 300 prevents Railway proxy from killing long-running generation requests
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --timeout-keep-alive 300

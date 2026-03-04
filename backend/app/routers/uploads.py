@@ -108,10 +108,52 @@ async def upload_reference(
     user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Upload a reference document (PDF/TXT/CSV/DOCX)."""
+    """Upload a single reference document (PDF/TXT/CSV/DOCX). Rejects duplicates."""
+    return await _upload_single_reference(file, user, db)
+
+
+@router.post("/references/bulk")
+async def upload_references_bulk(
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload multiple reference documents at once. Skips duplicates."""
+    results = []
+    skipped = []
+    for file in files:
+        try:
+            result = await _upload_single_reference(file, user, db)
+            results.append(result)
+        except HTTPException as e:
+            if e.status_code == 409:  # duplicate
+                skipped.append(file.filename)
+            else:
+                raise
+    return {
+        "uploaded": results,
+        "skipped_duplicates": skipped,
+        "num_uploaded": len(results),
+        "num_skipped": len(skipped),
+    }
+
+
+async def _upload_single_reference(
+    file: UploadFile, user: dict, db: Session
+) -> dict:
+    """Core logic: validate, deduplicate, save, extract, persist."""
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
     if ext not in ("pdf", "txt", "csv", "docx"):
         raise HTTPException(400, "Unsupported file type. Use PDF, TXT, CSV, or DOCX.")
+
+    # Duplicate check: same filename for same user
+    existing = (
+        db.query(Reference)
+        .filter(Reference.user_id == user["id"], Reference.filename == file.filename)
+        .first()
+    )
+    if existing:
+        raise HTTPException(409, f"Reference '{file.filename}' already uploaded.")
 
     content = await _read_upload(file)
 
@@ -191,3 +233,30 @@ def list_references(
         }
         for r in refs
     ]
+
+
+@router.delete("/reference/{ref_id}")
+def delete_reference(
+    ref_id: str,
+    user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete a reference document and its stored file."""
+    ref = (
+        db.query(Reference)
+        .filter(Reference.id == ref_id, Reference.user_id == user["id"])
+        .first()
+    )
+    if not ref:
+        raise HTTPException(404, "Reference not found")
+
+    # Remove file from disk
+    stored = Path(ref.stored_path)
+    if stored.exists():
+        stored.unlink()
+
+    # Cascade deletes passages via relationship
+    db.delete(ref)
+    db.commit()
+
+    return {"message": f"Reference '{ref.filename}' deleted.", "id": ref_id}

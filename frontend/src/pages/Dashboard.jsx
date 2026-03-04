@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const navigate = useNavigate();
 
   const refresh = useCallback(async () => {
@@ -43,19 +44,35 @@ export default function Dashboard() {
     e.target.value = '';
   }
 
-  async function handleUploadRef(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    setStatus('Uploading reference...');
+  async function handleUploadRefs(e) {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setStatus(`Uploading ${files.length} reference file(s)...`);
     setError('');
     try {
-      const data = await api.uploadReference(file);
-      setStatus(`Reference uploaded: ${data.filename} (${data.text_length} chars)`);
+      const data = await api.uploadReferences(files);
+      let msg = `Uploaded ${data.num_uploaded} reference(s)`;
+      if (data.num_skipped > 0) {
+        msg += ` · ${data.num_skipped} duplicate(s) skipped: ${data.skipped_duplicates.join(', ')}`;
+      }
+      setStatus(msg);
       refresh();
     } catch (err) {
       setError(err.message);
     }
     e.target.value = '';
+  }
+
+  async function handleDeleteRef(refId, filename) {
+    if (!window.confirm(`Delete reference "${filename}"?`)) return;
+    setError('');
+    try {
+      await api.deleteReference(refId);
+      setStatus(`Deleted ${filename}`);
+      refresh();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function handleBuildIndex() {
@@ -73,18 +90,18 @@ export default function Dashboard() {
   }
 
   async function handleGenerate(qid) {
-    setLoading(true);
-    setStatus('Generating answers...');
+    setGenerating(true);
+    setStatus('Generating answers — this may take 1–3 minutes, please wait...');
     setError('');
     try {
       const data = await api.generate(qid);
       setStatus(`Generated ${data.num_answers} answers`);
+      setGenerating(false);
       refresh();
       navigate(`/questionnaire/${data.run_id}`);
     } catch (err) {
+      setGenerating(false);
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -94,8 +111,8 @@ export default function Dashboard() {
 
       {error && <p className="error">{error}</p>}
       {status && (
-        <div style={{ color: loading ? 'var(--muted)' : 'var(--success)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          {loading && <span className="spinner"></span>}
+        <div style={{ color: (loading || generating) ? 'var(--muted)' : 'var(--success)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {(loading || generating) && <span className="spinner"></span>}
           <span>{status}</span>
         </div>
       )}
@@ -109,8 +126,8 @@ export default function Dashboard() {
             <input type="file" accept=".pdf,.xlsx,.txt" onChange={handleUploadQ} />
           </div>
           <div>
-            <label><strong>Reference Document</strong> (PDF/TXT/CSV/DOCX)</label>
-            <input type="file" accept=".pdf,.txt,.csv,.docx" onChange={handleUploadRef} />
+            <label><strong>Reference Documents</strong> (PDF/TXT/CSV/DOCX) — select multiple</label>
+            <input type="file" accept=".pdf,.txt,.csv,.docx" multiple onChange={handleUploadRefs} />
           </div>
         </div>
       </div>
@@ -124,7 +141,7 @@ export default function Dashboard() {
               Process references into passages and build embeddings for retrieval.
             </p>
           </div>
-          <button onClick={handleBuildIndex} disabled={loading || references.length === 0}>
+          <button onClick={handleBuildIndex} disabled={loading || generating || references.length === 0}>
             {loading && status.includes('Building') ? <><span className="spinner"></span>Building…</> : 'Build Index'}
           </button>
         </div>
@@ -141,8 +158,8 @@ export default function Dashboard() {
               <span>
                 <strong>{q.filename}</strong> — {q.num_questions} questions
               </span>
-              <button onClick={() => handleGenerate(q.id)} disabled={loading}>
-                {loading && status.includes('Generating') ? <><span className="spinner"></span>Generating…</> : 'Generate Answers'}
+              <button onClick={() => handleGenerate(q.id)} disabled={loading || generating}>
+                {generating ? <><span className="spinner"></span>Generating…</> : 'Generate Answers'}
               </button>
             </div>
           ))
@@ -152,11 +169,25 @@ export default function Dashboard() {
       {/* References */}
       <div className="card">
         <h3>References ({references.length})</h3>
-        {references.map((r) => (
-          <div key={r.id} className="mt-1">
-            📄 {r.filename} <span style={{ color: 'var(--muted)', fontSize: 12 }}>({r.file_type})</span>
-          </div>
-        ))}
+        {references.length === 0 ? (
+          <p className="loading">No references uploaded yet.</p>
+        ) : (
+          references.map((r) => (
+            <div key={r.id} className="flex-between mt-1" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
+              <span>
+                📄 {r.filename} <span style={{ color: 'var(--muted)', fontSize: 12 }}>({r.file_type})</span>
+              </span>
+              <button
+                className="secondary"
+                onClick={() => handleDeleteRef(r.id, r.filename)}
+                disabled={loading || generating}
+                style={{ fontSize: 12, padding: '4px 10px', color: 'var(--danger)' }}
+              >
+                🗑️ Delete
+              </button>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Previous Runs */}
