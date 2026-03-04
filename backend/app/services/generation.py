@@ -90,21 +90,10 @@ def generate_answer(question_text: str, user_id: str, threshold: float = RETRIEV
         return _not_found_result()
 
     max_sim = max(r["similarity"] for r in results)
-
-    # Improved confidence scoring: map similarity to a more meaningful 0-100 range
-    # Cosine similarity with MiniLM typically ranges 0.15-0.80 for relevant text
-    # Map: <0.20 → 0-20, 0.20-0.40 → 20-60, 0.40-0.60 → 60-85, >0.60 → 85-100
-    if max_sim < 0.20:
-        confidence_score = int(max_sim * 100)
-    elif max_sim < 0.40:
-        confidence_score = int(20 + (max_sim - 0.20) * 200)  # 20-60
-    elif max_sim < 0.60:
-        confidence_score = int(60 + (max_sim - 0.40) * 125)  # 60-85
-    else:
-        confidence_score = int(min(85 + (max_sim - 0.60) * 75, 100))  # 85-100
+    avg_sim = sum(r["similarity"] for r in results) / len(results)
 
     if max_sim < threshold:
-        return _not_found_result(confidence_score=confidence_score)
+        return _not_found_result(confidence_score=int(max_sim * 100))
 
     # Build passages block
     passages_block = _build_passages_block(results)
@@ -117,11 +106,37 @@ def generate_answer(question_text: str, user_id: str, threshold: float = RETRIEV
 
     # Verify citations against retrieved passages
     parsed["citations"] = _verify_citations(parsed["citations"], results)
+
+    # --- Fix 1: Strict answer filtering ---
+    # Remove sentences that don't overlap with any cited passage content
+    parsed["answer_text"] = _filter_answer_by_citations(
+        parsed["answer_text"], results, safe_question
+    )
+
+    # --- Fix 3: Weighted confidence formula ---
+    citation_count = min(len(parsed["citations"]), 3) / 3  # normalize to 0-1
+    # Exact match: does the answer contain verbatim phrases from top passage?
+    top_text = results[0]["text"].lower() if results else ""
+    answer_lower = parsed["answer_text"].lower()
+    answer_words = set(answer_lower.split())
+    top_words = set(top_text.split())
+    exact_match = len(answer_words & top_words) / max(len(answer_words), 1)
+
+    confidence_score = int(
+        (
+            0.6 * max_sim
+            + 0.2 * avg_sim
+            + 0.1 * citation_count
+            + 0.1 * exact_match
+        )
+        * 100
+    )
+    confidence_score = max(0, min(confidence_score, 100))
+
     if not parsed["citations"] and parsed["answer_text"] != "Not found in references.":
-        # If all citations were stripped, answer is unverifiable — mark low confidence
-        parsed["confidence_score"] = min(confidence_score, 20)
-    else:
-        parsed["confidence_score"] = confidence_score
+        confidence_score = min(confidence_score, 20)
+
+    parsed["confidence_score"] = confidence_score
     return parsed
 
 
@@ -132,6 +147,48 @@ def _not_found_result(confidence_score: int = 0) -> dict:
         "evidence_snippets": [],
         "confidence_score": confidence_score,
     }
+
+
+def _filter_answer_by_citations(answer_text: str, results: list[dict], question: str) -> str:
+    """Remove sentences from the answer that don't overlap with retrieved passage content.
+
+    A sentence is kept if it shares significant keyword overlap with at least
+    one of the top retrieved passages. This strips contamination from
+    low-relevance passages that leaked in.
+    """
+    if not results or answer_text == "Not found in references.":
+        return answer_text
+
+    # Build keyword set from top passages (content words only)
+    passage_words: set[str] = set()
+    for r in results:
+        for w in r["text"].lower().split():
+            if len(w) > 2:
+                passage_words.add(w.strip(".,;:!?()\"'"))
+
+    # Build keyword set from the question
+    q_words = {w.strip(".,;:!?()\"'") for w in question.lower().split() if len(w) > 2}
+
+    sentences = re.split(r"(?<=[.!?])\s+", answer_text)
+    kept = []
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        sent_words = {w.strip(".,;:!?()\"'") for w in sent.lower().split() if len(w) > 2}
+        if not sent_words:
+            continue
+        # Compute overlap with passage content
+        overlap = len(sent_words & passage_words) / len(sent_words)
+        # Also check question keyword overlap (sentence should be answering the question)
+        q_overlap = len(sent_words & q_words) / max(len(q_words), 1)
+        # Keep if ≥40% words come from passages, or sentence has strong question relevance
+        if overlap >= 0.4 or q_overlap >= 0.3:
+            kept.append(sent)
+
+    if not kept:
+        return answer_text  # fallback: don't strip everything
+    return " ".join(kept)
 
 
 def _build_passages_block(results: list[dict]) -> str:
@@ -207,7 +264,7 @@ def _extractive_fallback(question: str, results: list[dict]) -> str:
     # Collect and score sentences from top passages
     scored_sentences: list[tuple[float, str, str, str]] = []  # (score, sentence, citation, filename)
 
-    for rank, r in enumerate(results[:5]):  # Use top 5 passages
+    for rank, r in enumerate(results[:3]):  # Use top 3 passages only
         text = _clean_passage_text(r["text"])
         citation = f"{r['filename']} | {r['page_or_para']}"
 
