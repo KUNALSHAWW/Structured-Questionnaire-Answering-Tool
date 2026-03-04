@@ -45,3 +45,7 @@ desktop.ini
 
 # Test artifacts
 test_export.*
+test_pdfs/
+backend/debug_*.py
+backend/test_e2e_quality.py
+backend/test_e2e_data*/

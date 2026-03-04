@@ -186,6 +186,8 @@ def _extractive_fallback(question: str, results: list[dict]) -> str:
         "by", "on", "at", "about", "into", "through", "during", "before",
         "after", "above", "below", "between", "s", "t", "describe", "explain",
         "provide", "details", "company", "organization", "mention", "mentioned",
+        "current", "currently", "if", "not", "yes", "no", "answer", "question",
+        "please", "any", "also", "each", "using", "used", "use",
     }
     keywords = [
         w for w in re.findall(r"\b[a-z]+\b", question_lower)
@@ -198,14 +200,23 @@ def _extractive_fallback(question: str, results: list[dict]) -> str:
     keywords.extend([n for n in numbers])
     keywords.extend([p.lower() for p in proper_tokens])
 
+    # Extract bigrams from question for better matching
+    q_words = [w for w in re.findall(r"\b[a-z]+\b", question_lower) if w not in stop_words and len(w) > 2]
+    bigrams = [f"{q_words[i]} {q_words[i+1]}" for i in range(len(q_words)-1)] if len(q_words) >= 2 else []
+
     # Collect and score sentences from top passages
     scored_sentences: list[tuple[float, str, str, str]] = []  # (score, sentence, citation, filename)
 
-    for r in results[:5]:  # Use top 5 passages for better coverage
+    for rank, r in enumerate(results[:5]):  # Use top 5 passages
         text = _clean_passage_text(r["text"])
         citation = f"{r['filename']} | {r['page_or_para']}"
 
-        # Split into sentences
+        # Strip section title from beginning of cleaned text
+        section_title = r.get("page_or_para", "")
+        if section_title and text.lower().startswith(section_title.lower()):
+            text = text[len(section_title):].strip()
+
+        # Split into sentences — handle both period-endings and semicolons for list-like docs
         sentences = re.split(r"(?<=[.!?])\s+", text)
 
         for sent in sentences:
@@ -215,26 +226,56 @@ def _extractive_fallback(question: str, results: list[dict]) -> str:
             # Skip lines that look like document titles / headers
             if _is_header_line(sent):
                 continue
-            # Skip metadata fragments ("| Prepared by: ..." etc.)
+            # Skip metadata fragments
             if _is_metadata_fragment(sent):
+                continue
+            # Skip generic list headers / enum labels
+            if _is_noise_fragment(sent):
                 continue
 
             # Score sentence by keyword overlap
             sent_lower = sent.lower()
             score = 0.0
             matched_kw = 0
+            total_kw = len(keywords) if keywords else 1
             for kw in keywords:
                 if kw in sent_lower:
                     score += 1.0
                     matched_kw += 1
-            # Require at least 1 keyword match for relevance
+
+            # Bigram bonus — strongly rewards sentences matching multi-word concepts
+            for bg in bigrams:
+                if bg in sent_lower:
+                    score += 2.0
+
+            # Keyword density: what fraction of question keywords appear
+            kw_density = matched_kw / total_kw if total_kw > 0 else 0
+
+            # Strong penalty for zero keyword matches — these are noise
             if matched_kw == 0:
+                score -= 3.0
+
+            # Penalty for single keyword match in multi-keyword questions
+            if matched_kw == 1 and len(keywords) >= 3:
+                score -= 1.5
+
+            # Penalty for low keyword density with many keywords
+            if len(keywords) >= 3 and kw_density < 0.25:
                 score -= 1.0
-            # Boost sentences with numbers (often contain factual data)
+
+            # Boost sentences with numbers (factual data)
             if re.search(r"\d", sent):
-                score += 0.5
-            # Boost based on passage relevance (similarity rank)
-            score += r["similarity"] * 2
+                score += 0.3
+
+            # Boost based on passage similarity (from FAISS)
+            score += r["similarity"] * 1.5
+
+            # Penalize very short sentences (likely fragments)
+            if len(sent.split()) < 6:
+                score -= 0.5
+
+            # Rank bonus — prefer sentences from the most similar passage
+            score -= rank * 0.2
 
             scored_sentences.append((score, sent, citation, r["filename"]))
 
@@ -248,22 +289,36 @@ def _extractive_fallback(question: str, results: list[dict]) -> str:
             f"EVIDENCE_SNIPPETS:\n- [{citation}] \"{top_text[:200]}\""
         )
 
-    # Sort by score descending, take top sentences
+    # Sort by score descending
     scored_sentences.sort(key=lambda x: x[0], reverse=True)
 
-    # Select top 3-5 sentences, deduplicating
-    seen = set()
+    # --- Smart selection: prioritize relevance, limit noise ---
+    # Only take sentences scoring above threshold (strong keyword match)
+    positive = [(s, sent, cit, fn) for s, sent, cit, fn in scored_sentences if s > 0.5]
+    if not positive:
+        positive = scored_sentences[:2]  # fallback
+
+    seen_content = set()
     selected = []
     citations_used = set()
-    for score, sent, citation, filename in scored_sentences:
-        # Simple dedup by first 40 chars
-        key = sent[:40].lower()
-        if key in seen:
+    max_sentences = 3  # Max 3 sentences for concise answers
+
+    for score, sent, citation, filename in positive:
+        # Content-based dedup: skip if >60% word overlap with already-selected sentence
+        sent_words = set(sent.lower().split())
+        is_dup = False
+        for existing_words in seen_content:
+            overlap = len(sent_words & existing_words) / max(len(sent_words | existing_words), 1)
+            if overlap > 0.6:
+                is_dup = True
+                break
+        if is_dup:
             continue
-        seen.add(key)
+
+        seen_content.add(frozenset(sent_words))
         selected.append((sent, citation))
         citations_used.add(citation)
-        if len(selected) >= 5:
+        if len(selected) >= max_sentences:
             break
 
     answer_text = " ".join(_clean_sentence(s[0]) for s in selected)
@@ -291,6 +346,13 @@ def _clean_passage_text(text: str) -> str:
             continue
         if _is_header_line(line):
             continue
+        # Strip "Incident: <label>" or "Scenario: <label>" prefix, keeping body content
+        stripped = re.sub(
+            r"^(?:Incident|Scenario)\s*:\s*[^.]{5,60}?\s+(?=[A-Z][a-z])",
+            "", line,
+        ).strip()
+        if stripped and len(stripped) > 15:
+            line = stripped
         cleaned.append(line)
     return " ".join(cleaned)
 
@@ -323,6 +385,13 @@ def _is_header_line(line: str) -> bool:
     # Skip short all-caps or title-case lines that look like headings (≤8 words)
     if len(line.split()) <= 8 and (line.isupper() or line.istitle()):
         return True
+    # Skip short heading-like lines with parenthesized qualifiers
+    # e.g. "Operational Runbook (selected snippets)", "API Endpoints (examples)"
+    if len(line.split()) <= 8 and re.match(r'^[A-Z][A-Za-z\s&-]+\([^)]+\)\s*:?\s*$', line):
+        return True
+    # Skip short label lines ending with colon (2-4 words like "Rollback procedure:")
+    if re.match(r'^[A-Z][A-Za-z\s]{2,30}:\s*$', line) and len(line.split()) <= 4:
+        return True
     # Skip standalone date-like headers
     if re.match(r"^(Q[1-4]\s+\d{4}|FY\s*\d{4}|Year\s+\d{4}|January|February|March|April|May|June|July|August|September|October|November|December)\s*\d*$", line, re.IGNORECASE):
         return True
@@ -351,6 +420,33 @@ def _clean_sentence(sentence: str) -> str:
         cleaned,
         flags=re.IGNORECASE,
     ).strip()
+    # Strip leading enum-like labels ": CreateCharge, CreateCustomer, ..."
+    cleaned = re.sub(
+        r"^:\s+[A-Z][A-Za-z]+(?:,\s*[A-Z][A-Za-z]+){2,}[\.\s]",
+        "",
+        cleaned,
+    ).strip()
+    # Strip leading section labels like "Scenario Expected System Response"
+    cleaned = re.sub(
+        r"^(Scenario|Finding\s+ID|Product|Description)\s+[A-Z][A-Za-z\s]{3,30}\s+",
+        "",
+        cleaned,
+    ).strip()
+    # Strip leading "Incident: <label>" or "Scenario: <label>" prefix
+    cleaned = re.sub(
+        r"^(?:Incident|Scenario)\s*:\s*[^.]{5,60}?\s+(?=[A-Z][a-z])",
+        "",
+        cleaned,
+    ).strip()
+    # Strip leading table-row scenario labels (Title-case phrase before response)
+    # e.g. "Duplicate webhook deliveries Idempotency-key or..."
+    # e.g. "Missing KYC for a sub-merchant Onboarding holds..."
+    # e.g. "Expired card on file Charge attempt returns..."
+    cleaned = re.sub(
+        r"^[A-Z][a-z]+(?:\s+[a-z]+){1,5}\s+(?:for\s+[a-z]+\s+[a-z-]+\s+)?(?=[A-Z][a-z])",
+        "",
+        cleaned,
+    ).strip()
     # If we stripped too much, keep original
     if len(cleaned) < 15:
         return sentence.strip()
@@ -371,6 +467,21 @@ def _is_metadata_fragment(text: str) -> bool:
         return True
     # Standalone short fragments with pipes
     if text.startswith("|") or text.startswith(":"):
+        return True
+    return False
+
+
+def _is_noise_fragment(text: str) -> bool:
+    """Detect structural noise that adds no informational value to an answer."""
+    text = text.strip()
+    # Pure enum lists like ": CreateCharge, CreateCustomer, CreateToken, ..."
+    if re.match(r"^:?\s*[A-Z][A-Za-z]+(?:,\s*[A-Z][A-Za-z]+){2,}\.?$", text):
+        return True
+    # Table-like header lines: "Product Description", "Finding ID Summary Status"
+    if re.match(r"^[A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?$", text):
+        return True
+    # Section labels with no content: "Overview", "Key offerings:", "Edge-cases and expected behavior"
+    if re.match(r"^[A-Z][A-Za-z\s&-]{2,40}:?\s*$", text) and len(text.split()) <= 6:
         return True
     return False
 

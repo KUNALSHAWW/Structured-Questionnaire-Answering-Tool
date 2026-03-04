@@ -70,13 +70,29 @@ def split_into_passages(
                     })
         return passages
 
-    # ---- Strategy 2: Section-header-based ----
+    # ---- Strategy 2: Numbered section-header-based ----
     sections = _split_by_sections(text)
     if len(sections) > 1:
         for sec_num, sec_text in sections:
             chunks = _chunk_text(sec_text, token_size, overlap)
             for ci, chunk in enumerate(chunks):
                 label = f"section {sec_num}"
+                if len(chunks) > 1:
+                    label += f" (part {ci + 1})"
+                passages.append({
+                    "text": chunk,
+                    "page_or_para": label,
+                    "token_count": len(chunk.split()),
+                })
+        return passages
+
+    # ---- Strategy 2b: Titled section headers (non-numbered) ----
+    titled_sections = _split_by_titled_sections(text)
+    if len(titled_sections) > 1:
+        for sec_name, sec_text in titled_sections:
+            chunks = _chunk_text(sec_text, token_size, overlap)
+            for ci, chunk in enumerate(chunks):
+                label = sec_name
                 if len(chunks) > 1:
                     label += f" (part {ci + 1})"
                 passages.append({
@@ -141,6 +157,67 @@ def _split_by_sections(text: str) -> list[tuple[int, str]]:
         sec_text = text[pos:end].strip()
         if sec_text:
             sections.append((sec_num, sec_text))
+    return sections
+
+
+def _split_by_titled_sections(text: str) -> list[tuple[str, str]]:
+    """Split text at titled section headers (non-numbered).
+
+    Detects patterns like:
+      - "Authentication & Access Control"
+      - "Encryption & Data Handling"
+      - "Personal Data We Collect"
+      - "High-level architecture"
+      - "Operational Runbook (selected snippets)"
+      - "Key offerings:"
+
+    Returns list of (section_label, section_text).
+    If fewer than 2 titled sections found, returns empty list.
+    """
+    lines = text.split("\n")
+    header_indices = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Must be 2-8 words
+        words = stripped.rstrip(":").split()
+        if len(words) < 2 or len(words) > 8:
+            continue
+        # Must start with a capital letter
+        if not stripped[0].isupper():
+            continue
+        # Skip if it looks like a sentence (ends with period, or very long)
+        if stripped.endswith(".") or stripped.endswith("!") or stripped.endswith(";"):
+            continue
+        # Skip if it looks like body text (too many lowercase words for a heading)
+        lower_words = sum(1 for w in words if w[0].islower() and w not in (
+            "a", "an", "the", "and", "or", "of", "for", "in", "via", "by",
+            "to", "on", "at", "with", "is", "are", "we",
+        ))
+        # A heading should have most words capitalized (or short connecting words)
+        if lower_words > len(words) // 2:
+            continue
+        # Check that the next line (if any) is substantially different / has body content
+        if i + 1 < len(lines) and lines[i + 1].strip():
+            next_line = lines[i + 1].strip()
+            # Next line shouldn't also look like a header (unless it's a sub-header)
+            # A body line typically has more words or starts lowercase
+            if len(next_line.split()) >= 3 or next_line[0].islower():
+                header_indices.append((i, stripped.rstrip(":")))
+
+    if len(header_indices) < 2:
+        return []
+
+    sections = []
+    for idx, (line_idx, header) in enumerate(header_indices):
+        start_line = line_idx
+        end_line = header_indices[idx + 1][0] if idx + 1 < len(header_indices) else len(lines)
+        sec_text = "\n".join(lines[start_line:end_line]).strip()
+        if sec_text and len(sec_text.split()) >= 5:
+            sections.append((header[:50], sec_text))
+
     return sections
 
 
