@@ -201,7 +201,7 @@ def _extractive_fallback(question: str, results: list[dict]) -> str:
     # Collect and score sentences from top passages
     scored_sentences: list[tuple[float, str, str, str]] = []  # (score, sentence, citation, filename)
 
-    for r in results[:3]:  # Use top 3 passages
+    for r in results[:5]:  # Use top 5 passages for better coverage
         text = _clean_passage_text(r["text"])
         citation = f"{r['filename']} | {r['page_or_para']}"
 
@@ -215,13 +215,21 @@ def _extractive_fallback(question: str, results: list[dict]) -> str:
             # Skip lines that look like document titles / headers
             if _is_header_line(sent):
                 continue
+            # Skip metadata fragments ("| Prepared by: ..." etc.)
+            if _is_metadata_fragment(sent):
+                continue
 
             # Score sentence by keyword overlap
             sent_lower = sent.lower()
             score = 0.0
+            matched_kw = 0
             for kw in keywords:
                 if kw in sent_lower:
                     score += 1.0
+                    matched_kw += 1
+            # Require at least 1 keyword match for relevance
+            if matched_kw == 0:
+                score -= 1.0
             # Boost sentences with numbers (often contain factual data)
             if re.search(r"\d", sent):
                 score += 0.5
@@ -295,6 +303,14 @@ def _is_header_line(line: str) -> bool:
     # Skip lines that look like "CompanyName – Report Title 2025"
     if re.search(r"[–—-]\s*(HR|People|Finance|Revenue|Marketing|Sales|Report|Summary|Review|Plan|Strategy|Data|Privacy|Security|Policy|Company|Overview|ESG|Sustainability|Disaster|Recovery|Business|Continuity)", line, re.IGNORECASE):
         return True
+    # Skip metadata lines: "Prepared by: X | Auditor: Y | Classification: Z"
+    if re.search(r"(Prepared\s+by|Auditor|Classification|Confidential|Date)\s*:", line, re.IGNORECASE):
+        pipe_count = line.count('|')
+        if pipe_count >= 1:
+            return True
+    # Skip standalone metadata fragments starting/ending with pipe
+    if line.startswith('|') or (line.count('|') >= 2 and len(line.split()) <= 15):
+        return True
     # Skip lines with "Document Version X.X" or "Document ID:"
     if re.search(r"Document\s+(Version|ID)\s*[:\d]", line, re.IGNORECASE):
         return True
@@ -321,10 +337,42 @@ def _clean_sentence(sentence: str) -> str:
         "",
         sentence,
     ).strip()
+    # Strip leading metadata like "| Prepared by: Finance Department | Auditor: KPMG LLP"
+    cleaned = re.sub(
+        r"^[\|:]\s*(Prepared\s+by|Auditor|Classification|Date)\s*:?\s*[^\.]*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    # Strip inline metadata fragments "Fiscal Year 2025 | Prepared by: Finance Department | Auditor: KPMG LLP"
+    cleaned = re.sub(
+        r"\|\s*(Prepared\s+by|Auditor|Classification|Confidential|Date)\s*:\s*[^\.]*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
     # If we stripped too much, keep original
     if len(cleaned) < 15:
         return sentence.strip()
     return cleaned
+
+
+def _is_metadata_fragment(text: str) -> bool:
+    """Detect metadata fragments that shouldn't be in answers."""
+    text = text.strip()
+    # Lines that are mostly pipe-separated metadata
+    if text.count("|") >= 2 and len(text.split()) <= 20:
+        return True
+    # Lines starting with metadata prefixes
+    if re.match(r"^(Prepared\s+by|Auditor|Classification|Confidential)\s*:", text, re.IGNORECASE):
+        return True
+    # Lines that are just category labels like ": IT Governance Office"
+    if re.match(r"^:\s+\w", text):
+        return True
+    # Standalone short fragments with pipes
+    if text.startswith("|") or text.startswith(":"):
+        return True
+    return False
 
 
 def _parse_reply(raw: str, results: list[dict]) -> dict:

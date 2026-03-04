@@ -154,7 +154,8 @@ def _extract_pdf(filepath: str) -> str:
         for page in pdf.pages:
             t = page.extract_text() or ""
             texts.append(t)
-    return "\n".join(texts)
+    # Use form-feed between pages so the splitter can detect page boundaries
+    return "\f".join(texts)
 
 
 def _extract_txt(filepath: str) -> str:

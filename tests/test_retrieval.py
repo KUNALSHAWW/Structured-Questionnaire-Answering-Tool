@@ -36,6 +36,40 @@ class TestPassageSplitting:
         assert len(passages) == 1
         assert passages[0]["text"] == "Short text here."
 
+    def test_pdf_page_and_section_splitting(self):
+        """PDF text with form-feeds and numbered sections produces granular passages."""
+        text = (
+            "1. Infrastructure Overview\nNovaTech operates a hybrid cloud. "
+            "The primary data center is in Austin, Texas.\n"
+            "2. Cybersecurity\nNovaTech holds ISO 27001 and SOC 2 Type II certs. "
+            "Annual pen testing by CrowdStrike.\n"
+            "3. Backup\nDatabases are backed up every 4 hours using AWS Backup."
+            "\f"
+            "4. Disaster Recovery\nThe BCP was updated in September 2025. "
+            "DR failover tests are conducted bi-annually."
+        )
+        passages = split_into_passages(text, "test_report.pdf")
+        # Should have at least 4 passages (3 sections on page 1 + page 2)
+        assert len(passages) >= 4
+        # Check labels contain page and section info
+        labels = [p["page_or_para"] for p in passages]
+        assert any("page 1" in l and "section" in l for l in labels)
+        assert any("page 2" in l for l in labels)
+        # No "paragraph 1" — everything should be page/section based
+        assert not any(l == "paragraph 1" for l in labels)
+
+    def test_section_header_splitting_no_pages(self):
+        """Text with section headers but no form-feeds uses section-based split."""
+        text = (
+            "1. Revenue\nTotal revenue was $78M in FY2025.\n"
+            "2. Profitability\nGross margin was 71%. Operating income was $12M.\n"
+            "3. Audit\nFinancials were audited by KPMG under GAAP.\n"
+        )
+        passages = split_into_passages(text, "financials.txt")
+        assert len(passages) == 3
+        labels = [p["page_or_para"] for p in passages]
+        assert labels == ["section 1", "section 2", "section 3"]
+
 
 class TestEmbeddingsAndRetrieval:
     """Integration test — requires sentence-transformers or OpenAI key."""
