@@ -10,7 +10,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from app.services.parser import (
     parse_questionnaire,
     extract_reference_text,
-    _looks_like_question,
+    _starts_new_question,
+    _looks_like_question_fallback,
     _clean_question,
 )
 
@@ -18,17 +19,20 @@ SAMPLE_DIR = os.path.join(os.path.dirname(__file__), "..", "sample_data")
 
 
 class TestQuestionDetection:
-    def test_question_mark(self):
-        assert _looks_like_question("What is the company revenue?")
-
     def test_numbered_question(self):
-        assert _looks_like_question("1. What is the company mission statement?")
+        assert _starts_new_question("1. What is the company mission statement?")
 
-    def test_short_text_rejected(self):
-        assert not _looks_like_question("Hello?")
+    def test_Q_prefix_question(self):
+        assert _starts_new_question("Q3: Describe the DR plan.")
 
-    def test_plain_sentence_rejected(self):
-        assert not _looks_like_question("NovaTech Solutions is a technology company.")
+    def test_plain_sentence_not_new_question(self):
+        assert not _starts_new_question("NovaTech Solutions is a technology company.")
+
+    def test_fallback_question_mark(self):
+        assert _looks_like_question_fallback("What is the company revenue for the year?")
+
+    def test_fallback_short_text_rejected(self):
+        assert not _looks_like_question_fallback("Hello?")
 
 
 class TestCleanQuestion:
@@ -50,6 +54,17 @@ class TestQuestionnaireParsing:
         qs = parse_questionnaire(path, "txt")
         assert len(qs) == 10, f"Expected 10 questions, got {len(qs)}"
         assert all("text" in q for q in qs)
+
+    def test_parse_pdf_questionnaire(self):
+        path = os.path.join(SAMPLE_DIR, "questionnaire_vendor_assessment.pdf")
+        if not os.path.exists(path):
+            pytest.skip("Sample PDF questionnaire not found")
+        qs = parse_questionnaire(path, "pdf")
+        assert len(qs) == 10, f"Expected 10 questions from PDF, got {len(qs)}"
+        assert all("text" in q for q in qs)
+        # Verify multi-line questions are properly merged
+        q2 = qs[1]["text"]
+        assert "disaster recovery capabilities" in q2, "Q2 should include continuation text"
 
     def test_questions_have_location_meta(self):
         path = os.path.join(SAMPLE_DIR, "questionnaire.txt")

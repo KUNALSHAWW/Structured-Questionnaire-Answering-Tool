@@ -19,17 +19,17 @@ def parse_questionnaire(filepath: str, ext: str) -> list[dict]:
 def _parse_questionnaire_pdf(filepath: str) -> list[dict]:
     import pdfplumber
 
-    questions = []
+    # Collect all lines with page info
+    all_lines: list[tuple[str, int]] = []
     with pdfplumber.open(filepath) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
             for line in text.split("\n"):
-                line = line.strip()
-                if _looks_like_question(line):
-                    questions.append(
-                        {"text": _clean_question(line), "location_meta": f"page {page_num}"}
-                    )
-    return questions
+                stripped = line.strip()
+                if stripped:
+                    all_lines.append((stripped, page_num))
+
+    return _merge_and_extract_questions(all_lines)
 
 
 def _parse_questionnaire_xlsx(filepath: str) -> list[dict]:
@@ -37,37 +37,91 @@ def _parse_questionnaire_xlsx(filepath: str) -> list[dict]:
 
     wb = load_workbook(filepath, read_only=True)
     ws = wb.active
-    questions = []
+    all_lines: list[tuple[str, int]] = []
     for row_num, row in enumerate(ws.iter_rows(values_only=True), start=1):
         for cell in row:
-            if cell and isinstance(cell, str) and _looks_like_question(cell.strip()):
-                questions.append(
-                    {"text": _clean_question(cell.strip()), "location_meta": f"row {row_num}"}
-                )
+            if cell and isinstance(cell, str):
+                stripped = cell.strip()
+                if stripped:
+                    all_lines.append((stripped, row_num))
     wb.close()
-    return questions
+    return _merge_and_extract_questions(all_lines)
 
 
 def _parse_questionnaire_txt(filepath: str) -> list[dict]:
-    questions = []
+    all_lines: list[tuple[str, int]] = []
     with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
         for line_num, line in enumerate(f, start=1):
-            line = line.strip()
-            if _looks_like_question(line):
-                questions.append(
-                    {"text": _clean_question(line), "location_meta": f"line {line_num}"}
-                )
+            stripped = line.strip()
+            if stripped:
+                all_lines.append((stripped, line_num))
+    return _merge_and_extract_questions(all_lines)
+
+
+# ---- question numbering pattern ----
+# Matches: "Q1.", "Q1)", "Q1:", "1.", "1)", "1:", etc. at the start of a line
+_QUESTION_START_RE = re.compile(r"^Q?\d+[\.\)\:]\s", re.IGNORECASE)
+
+
+def _starts_new_question(text: str) -> bool:
+    """Check if a line begins a new numbered question."""
+    return bool(_QUESTION_START_RE.match(text))
+
+
+def _merge_and_extract_questions(lines: list[tuple[str, int]]) -> list[dict]:
+    """Merge multi-line questions and extract them.
+
+    Strategy:
+      1. Lines that start with a question number (Q1., 1., 2), etc.)
+         begin a new question.
+      2. Subsequent lines that do NOT start with a question number are
+         treated as continuation of the previous question.
+      3. After merging, any non-question preamble text is discarded.
+    """
+    # Phase 1: group lines into blocks (new-question-start → continuation lines)
+    blocks: list[dict] = []  # {"lines": [str], "location": str/int}
+    for text, loc in lines:
+        if _starts_new_question(text):
+            # Begin a new block
+            blocks.append({"lines": [text], "location": loc})
+        elif blocks:
+            # Continuation of the current block
+            blocks[-1]["lines"].append(text)
+        # else: preamble text before any question — skip
+
+    # Phase 2: merge lines within each block and clean
+    questions = []
+    for block in blocks:
+        merged = " ".join(block["lines"])
+        cleaned = _clean_question(merged)
+        if cleaned and len(cleaned) >= 10:
+            loc = block["location"]
+            loc_label = f"page {loc}" if isinstance(loc, int) else str(loc)
+            questions.append({"text": cleaned, "location_meta": loc_label})
+
+    # Fallback: if no numbered questions were found, try the old
+    # line-by-line heuristic (handles free-form question lists ending with ?)
+    if not questions:
+        for text, loc in lines:
+            if _looks_like_question_fallback(text):
+                cleaned = _clean_question(text)
+                if cleaned and len(cleaned) >= 10:
+                    loc_label = f"page {loc}" if isinstance(loc, int) else str(loc)
+                    questions.append({"text": cleaned, "location_meta": loc_label})
+
     return questions
 
 
-def _looks_like_question(text: str) -> bool:
-    """Heuristic: line ends with '?' or starts with a number/bullet followed by text."""
-    if not text or len(text) < 8:
+def _looks_like_question_fallback(text: str) -> bool:
+    """Fallback heuristic for files without numbered questions.
+
+    Only triggers when _merge_and_extract_questions found zero numbered
+    questions.  Uses stricter rules to avoid false positives on fragments.
+    """
+    if not text or len(text) < 20:
         return False
-    if text.endswith("?"):
-        return True
-    # Numbered patterns: "1.", "1)", "Q1.", "Q1:", etc.
-    if re.match(r"^(Q?\d+[\.\)\:])\s+.{8,}", text, re.IGNORECASE):
+    # Must end with ? and be long enough to be a real question
+    if text.endswith("?") and len(text) >= 20:
         return True
     return False
 
